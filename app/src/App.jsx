@@ -60,7 +60,8 @@ export default function App() {
   // Main Game / Simulation Loop
   useEffect(() => {
     let interval = setInterval(() => {
-      if (!isAIActive) return;
+      // BUG FIX: Enemy destroy aana AI stop aagidum
+      if (!isAIActive || enemyHealth <= 0) return;
 
       // 1. Calculate Distance
       const dx = ownShip.x - enemyAgent.x;
@@ -132,7 +133,7 @@ export default function App() {
     }, 30);
 
     return () => clearInterval(interval);
-  }, [isAIActive, ownShip, enemyAgent, mode, flares]);
+  }, [isAIActive, ownShip, enemyAgent, mode, flares, enemyHealth]); // added enemyHealth dependency
 
   // Canvas Drawing
   useEffect(() => {
@@ -174,7 +175,7 @@ export default function App() {
     ctx.fillText('✈️', ownShip.x - 13, ownShip.y + 10);
     ctx.fillStyle = '#60a5fa';
     ctx.font = '12px sans-serif';
-    ctx.fillText('Own Jet (Pilot Controlled)', ownShip.x - 55, ownShip.y - 15);
+    ctx.fillText('Own Jet', ownShip.x - 20, ownShip.y - 15);
 
     // Draw Enemy AI Drone 🛸 (If alive)
     if (enemyHealth > 0) {
@@ -182,7 +183,7 @@ export default function App() {
       ctx.fillText('🛸', enemyAgent.x - 13, enemyAgent.y + 10);
       ctx.fillStyle = '#f87171';
       ctx.font = '12px sans-serif';
-      ctx.fillText(`AI Drone (HP: ${enemyHealth}%)`, enemyAgent.x - 45, enemyAgent.y - 15);
+      ctx.fillText(`AI Drone (${enemyHealth}%)`, enemyAgent.x - 30, enemyAgent.y - 15);
     } else {
       ctx.fillStyle = '#ef4444';
       ctx.font = '14px sans-serif';
@@ -199,6 +200,7 @@ export default function App() {
     setExplosions([]);
     setEnemyHealth(100);
     setScore(0);
+    setDistance(0);
   };
 
   return (
@@ -229,13 +231,13 @@ export default function App() {
               onClick={fireMissile}
               style={{ padding: '10px 18px', backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
             >
-              🚀 Fire Missile (Space)
+              🚀 Fire (Space)
             </button>
             <button 
               onClick={deployFlare}
               style={{ padding: '10px 18px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
             >
-              ✨ Deploy Flares (F)
+              ✨ Flare (F)
             </button>
             <button 
               onClick={handleReset}
@@ -250,20 +252,20 @@ export default function App() {
           </div>
 
           <div style={{ color: '#94a3b8', fontSize: '13px', marginTop: '10px' }}>
-            🎮 <b>Controls:</b> Arrow Keys or WASD to fly Jet | <b>Spacebar:</b> Fire Missile | <b>F Key:</b> Deploy Flares
+            🎮 <b>Controls:</b> Arrow Keys/WASD to fly | <b>Spacebar:</b> Fire Missile | <b>F:</b> Deploy Flares
           </div>
         </div>
 
         {/* Analytics & Health Panel */}
         <div style={{ width: '320px', backgroundColor: '#0f172a', padding: '20px', borderRadius: '8px', border: '1px solid #334155', height: 'fit-content' }}>
-          <h2 style={{ color: '#38bdf8', fontSize: '18px', marginTop: 0 }}>🛡️ Tactical & Defense Metrics</h2>
+          <h2 style={{ color: '#38bdf8', fontSize: '18px', marginTop: 0 }}>🛡️ Tactical Metrics</h2>
           <hr style={{ borderColor: '#334155', marginBottom: '15px' }} />
 
           {/* Enemy Health Bar */}
           <div style={{ marginBottom: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', fontSize: '13px', marginBottom: '5px' }}>
               <span>Enemy Drone Health:</span>
-              <span>{enemyHealth}%</span>
+              <span>{enemyHealth > 0 ? `${enemyHealth}%` : 'DESTROYED'}</span>
             </div>
             <div style={{ width: '100%', height: '10px', backgroundColor: '#334155', borderRadius: '5px', overflow: 'hidden' }}>
               <div style={{ width: `${enemyHealth}%`, height: '100%', backgroundColor: enemyHealth > 50 ? '#22c55e' : enemyHealth > 20 ? '#eab308' : '#ef4444', transition: 'width 0.3s' }}></div>
@@ -273,7 +275,9 @@ export default function App() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '15px' }}>
             <div style={{ backgroundColor: '#1e293b', padding: '10px', borderRadius: '6px' }}>
               <span style={{ color: '#94a3b8', fontSize: '12px' }}>Proximity:</span>
-              <div style={{ fontSize: '20px', fontWeight: 'bold', color: distance < 100 ? '#ef4444' : '#22c55e' }}>{distance} m</div>
+              <div style={{ fontSize: '20px', fontWeight: 'bold', color: enemyHealth === 0 ? '#94a3b8' : (distance < 100 ? '#ef4444' : '#22c55e') }}>
+                {enemyHealth > 0 ? `${distance} m` : 'N/A'}
+              </div>
             </div>
             <div style={{ backgroundColor: '#1e293b', padding: '10px', borderRadius: '6px' }}>
               <span style={{ color: '#94a3b8', fontSize: '12px' }}>Combat Score:</span>
