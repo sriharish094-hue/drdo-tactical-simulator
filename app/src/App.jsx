@@ -18,26 +18,47 @@ export default function App() {
   const [flares, setFlares] = useState([]);
   const [explosions, setExplosions] = useState([]);
   
-  // Auto-Fire Cooldown Reference
   const lastAutoFire = useRef(0);
+  
+  // Mobile Movement Reference (For smooth touch controls)
+  const movementRef = useRef({ dx: 0, dy: 0 });
 
-  // Keyboard Controls (Aircraft manual move & fire)
+  // Keyboard Controls
   useEffect(() => {
     const handleKeyDown = (e) => {
-      const speed = 12;
-      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') setOwnShip(p => ({ ...p, y: Math.max(20, p.y - speed) }));
-      if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') setOwnShip(p => ({ ...p, y: Math.min(480, p.y + speed) }));
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') setOwnShip(p => ({ ...p, x: Math.max(20, p.x - speed) }));
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') setOwnShip(p => ({ ...p, x: Math.min(780, p.x + speed) }));
+      const speed = 15;
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') movementRef.current = { dx: 0, dy: -speed };
+      if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') movementRef.current = { dx: 0, dy: speed };
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') movementRef.current = { dx: -speed, dy: 0 };
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') movementRef.current = { dx: speed, dy: 0 };
       if (e.code === 'Space') { e.preventDefault(); fireMissile(); }
       if (e.key === 'f' || e.key === 'F') deployFlare();
     };
+    const handleKeyUp = (e) => {
+      if (['ArrowUp', 'w', 'W', 'ArrowDown', 's', 'S', 'ArrowLeft', 'a', 'A', 'ArrowRight', 'd', 'D'].includes(e.key)) {
+        movementRef.current = { dx: 0, dy: 0 };
+      }
+    };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [ownShip, enemyAgent, baseHealth]);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [baseHealth]);
 
   const fireMissile = () => { if (baseHealth > 0) setMissiles(prev => [...prev, { x: ownShip.x, y: ownShip.y, speed: 12, type: 'MANUAL' }]); };
   const deployFlare = () => { if (baseHealth > 0) setFlares(prev => [...prev, { x: ownShip.x, y: ownShip.y, life: 100 }]); };
+
+  // Touch/Mouse Handlers for Mobile UI
+  const handleTouchMove = (dx, dy) => (e) => {
+    e.preventDefault(); 
+    movementRef.current = { dx, dy };
+  };
+  const handleTouchStop = (e) => {
+    e.preventDefault();
+    movementRef.current = { dx: 0, dy: 0 };
+  };
 
   // Main Simulation Engine
   useEffect(() => {
@@ -48,9 +69,14 @@ export default function App() {
       if (time - lastTime > 30) {
         lastTime = time;
 
+        // Apply smooth movement for jet (Mobile & Keyboard combined)
+        setOwnShip(p => ({
+          x: Math.max(20, Math.min(780, p.x + movementRef.current.dx)),
+          y: Math.max(20, Math.min(480, p.y + movementRef.current.dy))
+        }));
+
         if (isAIActive && enemyHealth > 0 && baseHealth > 0) {
-          const cx = 400; // canvas center X
-          const cy = 250; // canvas center Y
+          const cx = 400, cy = 250;
           const sweepAngle = (Date.now() / 1200) % (Math.PI * 2);
 
           const dx = ownShip.x - enemyAgent.x, dy = ownShip.y - enemyAgent.y;
@@ -75,60 +101,51 @@ export default function App() {
             return prev;
           });
 
-          // 2. BUG FIX: Missiles Logic (Auto-Fire + Movement combined safely)
+          // 2. Auto-SAM & Missiles Logic
           setMissiles(prevMissiles => {
             let activeMissiles = [...prevMissiles];
-
-            // AUTO-SAM DETECTION LOGIC
             let objAngle = Math.atan2(enemyAgent.y - cy, enemyAgent.x - cx);
             if (objAngle < 0) objAngle += Math.PI * 2;
             let diff = sweepAngle - objAngle;
             if (diff < 0) diff += Math.PI * 2;
             
-            // If radar passes over enemy (diff < 0.4) and cooldown (1.5s) passed -> FIRE!
             if (diff < 0.4 && Date.now() - lastAutoFire.current > 1500 && flares.length === 0) {
               activeMissiles.push({ x: basePos.x + 30, y: basePos.y - 15, speed: 10, type: 'AUTO' });
-              lastAutoFire.current = Date.now(); // Reset cooldown
+              lastAutoFire.current = Date.now();
             }
 
-            // MOVEMENT & COLLISION
             return activeMissiles.map(m => {
               const mdx = enemyAgent.x - m.x, mdy = enemyAgent.y - m.y;
               const mdist = Math.sqrt(mdx * mdx + mdy * mdy);
-              
               if (mdist < 25) {
                 setEnemyHealth(h => Math.max(0, h - 25));
                 setScore(s => s + 150);
                 setExplosions(ex => [...ex, { x: enemyAgent.x, y: enemyAgent.y, life: 15 }]);
-                return null; // Destroy missile
+                return null;
               }
               if (mdist < 5) return null;
-              
               return { x: m.x + (mdx / mdist) * m.speed, y: m.y + (mdy / mdist) * m.speed, speed: m.speed, type: m.type };
             }).filter(Boolean);
           });
 
-          // 3. Update particles
           setFlares(prev => prev.map(f => ({ ...f, life: f.life - 2 })).filter(f => f.life > 0));
           setExplosions(prev => prev.map(e => ({ ...e, life: e.life - 1 })).filter(e => e.life > 0));
         }
       }
 
-      // --- CANVAS DRAWING (UI) ---
+      // --- CANVAS DRAWING ---
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext('2d');
         const cx = canvas.width / 2, cy = canvas.height / 2;
         const sweepAngle = (Date.now() / 1200) % (Math.PI * 2);
 
-        // Dark Background & Grid
         ctx.fillStyle = 'rgba(2, 6, 23, 0.4)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.strokeStyle = 'rgba(30, 41, 59, 0.6)'; ctx.lineWidth = 1;
         for (let r = 50; r <= 450; r += 50) { ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke(); }
         ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, canvas.height); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(canvas.width, cy); ctx.stroke();
 
-        // Green Radar Sweep
         const radius = Math.max(cx, cy) + 100;
         ctx.save(); ctx.translate(cx, cy); ctx.rotate(sweepAngle);
         ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, radius, 0, 0.25); ctx.lineTo(0, 0);
@@ -145,10 +162,9 @@ export default function App() {
           if (diff < 0) diff += Math.PI * 2;
           return (diff < 0.2) ? 1.0 : (diff < 1.5 ? 1.0 - (diff / 1.5) : 0.1);
         };
-
         const drawTacticalText = (text, x, y, color) => { ctx.fillStyle = color; ctx.font = '10px "Courier New", monospace'; ctx.fillText(text, x, y); };
 
-        // Base HQ & Auto-SAM Turret
+        // Base HQ & Auto-SAM
         const baseIllum = getIllumination(basePos.x, basePos.y);
         ctx.beginPath(); ctx.rect(basePos.x - 25, basePos.y - 15, 50, 30);
         ctx.fillStyle = `rgba(56, 189, 248, ${baseIllum > 0.8 ? 0.4 : 0.05})`; ctx.fill();
@@ -195,7 +211,7 @@ export default function App() {
         
         missiles.forEach(m => {
           ctx.beginPath(); ctx.arc(m.x, m.y, 4, 0, Math.PI * 2);
-          ctx.fillStyle = m.type === 'AUTO' ? '#eab308' : '#ffffff'; // AUTO = Yellow, MANUAL = White
+          ctx.fillStyle = m.type === 'AUTO' ? '#eab308' : '#ffffff'; 
           if (m.type === 'AUTO') { ctx.shadowBlur = 10; ctx.shadowColor = '#eab308'; }
           ctx.fill(); ctx.shadowBlur = 0;
         });
@@ -223,56 +239,52 @@ export default function App() {
     setEnemyHealth(100); setBaseHealth(100); setScore(0); setDistance(0);
   };
 
+  const btnStyle = { padding: '15px', backgroundColor: '#1e293b', color: 'white', border: '1px solid #334155', borderRadius: '8px', touchAction: 'none', userSelect: 'none', fontWeight: 'bold', minWidth: '60px' };
+
   return (
-    <div style={{ backgroundColor: '#020617', color: 'white', minHeight: '100vh', padding: '20px', fontFamily: '"Courier New", monospace' }}>
-      <header style={{ borderBottom: '1px solid #1e293b', paddingBottom: '12px', marginBottom: '20px' }}>
-        <h1 style={{ color: '#38bdf8', margin: 0, fontSize: '24px', letterSpacing: '1px' }}>TACTICAL DISPLAY SYSTM // DRDO-C2</h1>
-        <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '12px' }}>OP-MODE: AUTO-SAM DEPLOYED | MANUAL OVERRIDE STANDBY</p>
+    <div style={{ backgroundColor: '#020617', color: 'white', minHeight: '100vh', padding: '10px', fontFamily: '"Courier New", monospace', overflowX: 'hidden' }}>
+      <header style={{ borderBottom: '1px solid #1e293b', paddingBottom: '10px', marginBottom: '10px' }}>
+        <h1 style={{ color: '#38bdf8', margin: 0, fontSize: '20px' }}>DRDO-C2 // MOBILE PROTOCOL</h1>
       </header>
 
-      <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-        <div style={{ flex: '1 1 auto' }}>
-          <div style={{ marginBottom: '15px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button onClick={() => setIsAIActive(!isAIActive)} style={{ padding: '8px 16px', backgroundColor: isAIActive ? '#7f1d1d' : '#14532d', color: isAIActive ? '#fca5a5' : '#86efac', border: '1px solid ' + (isAIActive ? '#ef4444' : '#22c55e'), fontFamily: 'inherit', cursor: 'pointer' }}>
-              {isAIActive ? 'HALT SIMULATION' : 'INITIATE TRACKING'}
-            </button>
-            <button onClick={handleReset} style={{ padding: '8px 16px', backgroundColor: '#0f172a', color: '#94a3b8', border: '1px solid #334155', fontFamily: 'inherit', cursor: 'pointer' }}>
-              RESET SYS
-            </button>
-          </div>
-
-          <div style={{ border: '1px solid #334155', display: 'inline-block', backgroundColor: '#020617', position: 'relative' }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.1) 2px, rgba(0,0,0,0.1) 4px)', pointerEvents: 'none' }}></div>
-            <canvas ref={canvasRef} width={800} height={500} style={{ display: 'block', maxWidth: '100%' }} />
-          </div>
-
-          <div style={{ color: '#64748b', fontSize: '12px', marginTop: '10px' }}>
-            INPUT: [WASD] JET VECTOR | [SPACE] MANUAL FIRE (White) | AUTO-SAM: ACTIVE (Yellow)
-          </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        
+        {/* Top Controls */}
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button onClick={() => setIsAIActive(!isAIActive)} style={{ padding: '8px 16px', backgroundColor: isAIActive ? '#7f1d1d' : '#14532d', color: isAIActive ? '#fca5a5' : '#86efac', border: '1px solid ' + (isAIActive ? '#ef4444' : '#22c55e'), fontFamily: 'inherit', borderRadius: '4px' }}>
+            {isAIActive ? 'HALT SIMULATION' : 'INITIATE TRACKING'}
+          </button>
+          <button onClick={handleReset} style={{ padding: '8px 16px', backgroundColor: '#0f172a', color: '#94a3b8', border: '1px solid #334155', fontFamily: 'inherit', borderRadius: '4px' }}>
+            RESET
+          </button>
         </div>
 
-        <div style={{ width: '300px', backgroundColor: '#0f172a', padding: '20px', border: '1px solid #1e293b' }}>
-          <h2 style={{ color: '#38bdf8', fontSize: '16px', marginTop: 0, borderBottom: '1px solid #1e293b', paddingBottom: '10px' }}>TELEMETRY DATA</h2>
+        {/* Radar Canvas */}
+        <div style={{ border: '1px solid #334155', backgroundColor: '#020617', width: '100%', overflow: 'hidden' }}>
+          <canvas ref={canvasRef} width={800} height={500} style={{ display: 'block', width: '100%', height: 'auto' }} />
+        </div>
+
+        {/* MOBILE ON-SCREEN CONTROLS */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', backgroundColor: '#0f172a', padding: '15px', borderRadius: '8px', border: '1px solid #1e293b', gap: '10px' }}>
           
-          <div style={{ display: 'grid', gap: '15px', marginTop: '15px' }}>
-            <div>
-              <div style={{ color: '#64748b', fontSize: '11px' }}>HQ INTEGRITY</div>
-              <div style={{ fontSize: '20px', color: baseHealth > 30 ? '#38bdf8' : '#ef4444' }}>{baseHealth}%</div>
-            </div>
-            <div>
-              <div style={{ color: '#64748b', fontSize: '11px' }}>HOSTILE TRK-99 STAT</div>
-              <div style={{ fontSize: '20px', color: enemyHealth > 0 ? '#ef4444' : '#4ade80' }}>
-                {enemyHealth > 0 ? `ACTIVE (${enemyHealth}%)` : 'NEUTRALIZED'}
-              </div>
-            </div>
-            <div style={{ backgroundColor: '#1e293b', padding: '10px', borderRadius: '4px', borderLeft: '3px solid #eab308' }}>
-              <div style={{ color: '#94a3b8', fontSize: '11px' }}>AUTO-SAM STATUS</div>
-              <div style={{ fontSize: '14px', color: '#eab308', fontWeight: 'bold' }}>
-                {enemyHealth > 0 ? 'SCANNING...' : 'STANDBY'}
-              </div>
-            </div>
+          {/* D-Pad / Directional Controls */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '5px', maxWidth: '200px' }}>
+            <div></div>
+            <button onPointerDown={handleTouchMove(0, -15)} onPointerUp={handleTouchStop} onPointerLeave={handleTouchStop} style={btnStyle}>⬆️</button>
+            <div></div>
+            <button onPointerDown={handleTouchMove(-15, 0)} onPointerUp={handleTouchStop} onPointerLeave={handleTouchStop} style={btnStyle}>⬅️</button>
+            <button onPointerDown={handleTouchMove(0, 15)} onPointerUp={handleTouchStop} onPointerLeave={handleTouchStop} style={btnStyle}>⬇️</button>
+            <button onPointerDown={handleTouchMove(15, 0)} onPointerUp={handleTouchStop} onPointerLeave={handleTouchStop} style={btnStyle}>➡️</button>
           </div>
+
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', justifyContent: 'center' }}>
+            <button onClick={fireMissile} style={{ ...btnStyle, backgroundColor: '#dc2626', padding: '20px' }}>🚀 FIRE</button>
+            <button onClick={deployFlare} style={{ ...btnStyle, backgroundColor: '#3b82f6', padding: '15px' }}>✨ FLARE</button>
+          </div>
+
         </div>
+
       </div>
     </div>
   );
