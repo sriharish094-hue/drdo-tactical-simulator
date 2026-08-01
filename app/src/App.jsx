@@ -7,11 +7,14 @@ export default function App() {
   const [score, setScore] = useState(0);
   const [distance, setDistance] = useState(0);
   const [enemyHealth, setEnemyHealth] = useState(100);
+  const [baseHealth, setBaseHealth] = useState(100); // New: Base Health
   const [stats, setStats] = useState({ hits: 0, missiles: 0, flares: 0 });
 
   // Agents Position & State
   const [ownShip, setOwnShip] = useState({ x: 150, y: 350 });
-  const [enemyAgent, setEnemyAgent] = useState({ x: 650, y: 150 });
+  const [enemyAgent, setEnemyAgent] = useState({ x: 650, y: 50 });
+  const basePos = { x: 400, y: 450 }; // Base Location (Bottom Center)
+
   const [missiles, setMissiles] = useState([]);
   const [flares, setFlares] = useState([]);
   const [explosions, setExplosions] = useState([]);
@@ -19,62 +22,51 @@ export default function App() {
   // Keyboard Controls (WASD / Arrows)
   useEffect(() => {
     const handleKeyDown = (e) => {
-      const speed = 10;
-      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
-        setOwnShip(p => ({ ...p, y: Math.max(20, p.y - speed) }));
-      }
-      if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
-        setOwnShip(p => ({ ...p, y: Math.min(480, p.y + speed) }));
-      }
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
-        setOwnShip(p => ({ ...p, x: Math.max(20, p.x - speed) }));
-      }
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
-        setOwnShip(p => ({ ...p, x: Math.min(780, p.x + speed) }));
-      }
-      if (e.code === 'Space') {
-        e.preventDefault();
-        fireMissile();
-      }
-      if (e.key === 'f' || e.key === 'F') {
-        deployFlare();
-      }
+      const speed = 12;
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') setOwnShip(p => ({ ...p, y: Math.max(20, p.y - speed) }));
+      if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') setOwnShip(p => ({ ...p, y: Math.min(480, p.y + speed) }));
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') setOwnShip(p => ({ ...p, x: Math.max(20, p.x - speed) }));
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') setOwnShip(p => ({ ...p, x: Math.min(780, p.x + speed) }));
+      if (e.code === 'Space') { e.preventDefault(); fireMissile(); }
+      if (e.key === 'f' || e.key === 'F') deployFlare();
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [ownShip, enemyAgent]);
 
-  // Fire Counter-Attack Missile
   const fireMissile = () => {
-    setMissiles(prev => [...prev, { x: ownShip.x, y: ownShip.y, speed: 6 }]);
-    setStats(s => ({ ...s, missiles: s.missiles + 1 }));
+    if (baseHealth > 0) {
+      setMissiles(prev => [...prev, { x: ownShip.x, y: ownShip.y, speed: 8 }]);
+      setStats(s => ({ ...s, missiles: s.missiles + 1 }));
+    }
   };
 
-  // Deploy Defensive Flares
   const deployFlare = () => {
-    setFlares(prev => [...prev, { x: ownShip.x, y: ownShip.y, life: 100 }]);
-    setStats(s => ({ ...s, flares: s.flares + 1 }));
+    if (baseHealth > 0) {
+      setFlares(prev => [...prev, { x: ownShip.x, y: ownShip.y, life: 100 }]);
+      setStats(s => ({ ...s, flares: s.flares + 1 }));
+    }
   };
 
-  // Main Game / Simulation Loop
+  // Main Simulation Loop
   useEffect(() => {
     let interval = setInterval(() => {
-      // BUG FIX: Enemy destroy aana AI stop aagidum
-      if (!isAIActive || enemyHealth <= 0) return;
+      // Stop AI if Game Over or Enemy Dead
+      if (!isAIActive || enemyHealth <= 0 || baseHealth <= 0) return;
 
-      // 1. Calculate Distance
+      // 1. Calculate Jet to Enemy Distance (Proximity)
       const dx = ownShip.x - enemyAgent.x;
       const dy = ownShip.y - enemyAgent.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       setDistance(Math.floor(dist));
 
-      // 2. Enemy AI Logic (Targeting Jet unless Flares exist)
+      // 2. Enemy AI Logic - Target BaseHQ!
       setEnemyAgent(prev => {
-        let targetX = ownShip.x;
-        let targetY = ownShip.y;
+        let targetX = basePos.x; // Default target is Base HQ
+        let targetY = basePos.y;
 
-        // If flares dropped, AI gets distracted by nearest flare
+        // Distract AI with Flares
         if (flares.length > 0) {
           targetX = flares[0].x + Math.sin(Date.now() / 100) * 50;
           targetY = flares[0].y + Math.cos(Date.now() / 100) * 50;
@@ -83,57 +75,47 @@ export default function App() {
         const edx = targetX - prev.x;
         const edy = targetY - prev.y;
         const edist = Math.sqrt(edx * edx + edy * edy);
-        const speed = mode === 'WAR' ? 2.5 : 0.8;
+        const speed = mode === 'WAR' ? 2 : 1;
 
-        if (edist > 15) {
-          return {
-            x: prev.x + (edx / edist) * speed,
-            y: prev.y + (edy / edist) * speed
-          };
+        // Check if Enemy reached the Base to deal damage
+        if (edist < 30 && flares.length === 0) {
+          setBaseHealth(h => Math.max(0, h - 2)); // Damage base
+          setExplosions(ex => [...ex, { x: basePos.x, y: basePos.y - 20, life: 5 }]);
+        }
+
+        if (edist > 5) {
+          return { x: prev.x + (edx / edist) * speed, y: prev.y + (edy / edist) * speed };
         }
         return prev;
       });
 
-      // 3. Move Missiles & Check Collision
+      // 3. Move Missiles & Check Collisions
       setMissiles(prevMissiles => {
         return prevMissiles.map(m => {
           const mdx = enemyAgent.x - m.x;
           const mdy = enemyAgent.y - m.y;
           const mdist = Math.sqrt(mdx * mdx + mdy * mdy);
 
-          if (mdist < 20) {
-            // Hit Enemy!
-            setEnemyHealth(h => Math.max(0, h - 20));
-            setScore(s => s + 100);
+          if (mdist < 25) { // Hit Enemy
+            setEnemyHealth(h => Math.max(0, h - 25)); // Takes 4 hits to destroy 100 HP
+            setScore(s => s + 150);
             setStats(s => ({ ...s, hits: s.hits + 1 }));
             setExplosions(ex => [...ex, { x: enemyAgent.x, y: enemyAgent.y, life: 15 }]);
-            return null; // Remove missile
+            return null;
           }
-
           if (mdist < 5) return null;
-
-          return {
-            x: m.x + (mdx / mdist) * m.speed,
-            y: m.y + (mdy / mdist) * m.speed,
-            speed: m.speed
-          };
+          return { x: m.x + (mdx / mdist) * m.speed, y: m.y + (mdy / mdist) * m.speed, speed: m.speed };
         }).filter(Boolean);
       });
 
-      // 4. Update Flares lifecycle
-      setFlares(prevFlares => {
-        return prevFlares.map(f => ({ ...f, life: f.life - 2 })).filter(f => f.life > 0);
-      });
-
-      // 5. Update Explosion particles
-      setExplosions(prevEx => {
-        return prevEx.map(e => ({ ...e, life: e.life - 1 })).filter(e => e.life > 0);
-      });
+      // 4. Update Particles
+      setFlares(prev => prev.map(f => ({ ...f, life: f.life - 2 })).filter(f => f.life > 0));
+      setExplosions(prev => prev.map(e => ({ ...e, life: e.life - 1 })).filter(e => e.life > 0));
 
     }, 30);
 
     return () => clearInterval(interval);
-  }, [isAIActive, ownShip, enemyAgent, mode, flares, enemyHealth]); // added enemyHealth dependency
+  }, [isAIActive, ownShip, enemyAgent, mode, flares, enemyHealth, baseHealth]);
 
   // Canvas Drawing
   useEffect(() => {
@@ -141,10 +123,9 @@ export default function App() {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
 
-    // Radar Dark Grid Background
+    // Radar Background
     ctx.fillStyle = '#0f172a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
     ctx.strokeStyle = '#1e293b';
     ctx.lineWidth = 1;
     for (let i = 0; i < canvas.width; i += 50) {
@@ -152,98 +133,79 @@ export default function App() {
       ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke();
     }
 
-    // Draw Defense Flares ✨
-    flares.forEach(f => {
-      ctx.font = '20px Arial';
-      ctx.fillText('✨', f.x - 10, f.y + 10);
-    });
+    // Draw Military Base HQ 🏢
+    ctx.font = '36px Arial';
+    ctx.fillText('🏢', basePos.x - 18, basePos.y + 10);
+    ctx.fillStyle = baseHealth > 30 ? '#38bdf8' : '#ef4444';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText(`HQ BASE (${baseHealth}%)`, basePos.x - 40, basePos.y + 30);
+    
+    // Draw Base Defense Radius
+    ctx.beginPath();
+    ctx.arc(basePos.x, basePos.y, 80, 0, Math.PI * 2);
+    ctx.strokeStyle = baseHealth > 30 ? 'rgba(56, 189, 248, 0.2)' : 'rgba(239, 68, 68, 0.4)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
 
-    // Draw Missiles 🚀
-    missiles.forEach(m => {
-      ctx.font = '18px Arial';
-      ctx.fillText('🚀', m.x - 8, m.y + 8);
-    });
-
-    // Draw Hit Explosions 💥
-    explosions.forEach(e => {
-      ctx.font = '28px Arial';
-      ctx.fillText('💥', e.x - 14, e.y + 14);
-    });
+    // Draw Flares ✨ & Missiles 🚀 & Explosions 💥
+    flares.forEach(f => { ctx.font = '20px Arial'; ctx.fillText('✨', f.x - 10, f.y + 10); });
+    missiles.forEach(m => { ctx.font = '18px Arial'; ctx.fillText('🚀', m.x - 8, m.y + 8); });
+    explosions.forEach(e => { ctx.font = '28px Arial'; ctx.fillText('💥', e.x - 14, e.y + 14); });
 
     // Draw Own Jet ✈️
     ctx.font = '26px Arial';
     ctx.fillText('✈️', ownShip.x - 13, ownShip.y + 10);
     ctx.fillStyle = '#60a5fa';
     ctx.font = '12px sans-serif';
-    ctx.fillText('Own Jet', ownShip.x - 20, ownShip.y - 15);
+    ctx.fillText('Interceptor', ownShip.x - 25, ownShip.y - 15);
 
-    // Draw Enemy AI Drone 🛸 (If alive)
-    if (enemyHealth > 0) {
+    // Draw Enemy / Game Over States
+    if (baseHealth <= 0) {
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ef4444';
+      ctx.font = 'bold 40px sans-serif';
+      ctx.fillText('GAME OVER - BASE DESTROYED', 90, 240);
+    } else if (enemyHealth > 0) {
       ctx.font = '26px Arial';
       ctx.fillText('🛸', enemyAgent.x - 13, enemyAgent.y + 10);
       ctx.fillStyle = '#f87171';
       ctx.font = '12px sans-serif';
-      ctx.fillText(`AI Drone (${enemyHealth}%)`, enemyAgent.x - 30, enemyAgent.y - 15);
+      ctx.fillText(`Kamikaze Drone (${enemyHealth}%)`, enemyAgent.x - 50, enemyAgent.y - 15);
     } else {
-      ctx.fillStyle = '#ef4444';
-      ctx.font = '14px sans-serif';
-      ctx.fillText('🎯 TARGET DESTROYED', enemyAgent.x - 60, enemyAgent.y);
+      ctx.fillStyle = '#4ade80';
+      ctx.font = 'bold 30px sans-serif';
+      ctx.fillText('MISSION SUCCESS - THREAT NEUTRALIZED', 90, 240);
     }
 
-  }, [ownShip, enemyAgent, missiles, flares, explosions, enemyHealth]);
+  }, [ownShip, enemyAgent, missiles, flares, explosions, enemyHealth, baseHealth]);
 
   const handleReset = () => {
     setOwnShip({ x: 150, y: 350 });
-    setEnemyAgent({ x: 650, y: 150 });
-    setMissiles([]);
-    setFlares([]);
-    setExplosions([]);
-    setEnemyHealth(100);
-    setScore(0);
-    setDistance(0);
+    setEnemyAgent({ x: 650, y: 50 });
+    setMissiles([]); setFlares([]); setExplosions([]);
+    setEnemyHealth(100); setBaseHealth(100);
+    setScore(0); setDistance(0);
   };
 
   return (
     <div style={{ backgroundColor: '#020617', color: 'white', minHeight: '100vh', padding: '20px', fontFamily: 'sans-serif' }}>
       <header style={{ borderBottom: '1px solid #334155', paddingBottom: '12px', marginBottom: '20px' }}>
         <h1 style={{ color: '#38bdf8', margin: 0, fontSize: '24px' }}>DRDO Tactical Simulator</h1>
-        <p style={{ color: '#94a3b8', margin: '4px 0 0 0', fontSize: '14px' }}>Phase 3: Active Interception & Counter-Attack Defense System</p>
+        <p style={{ color: '#94a3b8', margin: '4px 0 0 0', fontSize: '14px' }}>Phase 4: Base Defense Protocol (Protect the HQ)</p>
       </header>
 
       <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-        
-        {/* Radar Screen */}
         <div style={{ flex: '1 1 auto' }}>
           <div style={{ marginBottom: '15px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button 
-              onClick={() => setIsAIActive(!isAIActive)}
-              style={{ padding: '10px 18px', backgroundColor: isAIActive ? '#ef4444' : '#22c55e', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
-            >
-              {isAIActive ? '🛑 Stop AI' : '▶️ Start AI'}
+            <button onClick={() => setIsAIActive(!isAIActive)} style={{ padding: '10px 18px', backgroundColor: isAIActive ? '#ef4444' : '#22c55e', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+              {isAIActive ? '🛑 Stop Simulation' : '▶️ Start Attack'}
             </button>
-            <button 
-              onClick={() => setMode(mode === 'PEACE' ? 'WAR' : 'PEACE')}
-              style={{ padding: '10px 18px', backgroundColor: '#eab308', color: 'black', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
-            >
-              Mode: {mode}
+            <button onClick={() => setMode(mode === 'PEACE' ? 'WAR' : 'PEACE')} style={{ padding: '10px 18px', backgroundColor: '#eab308', color: 'black', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+              Enemy Speed: {mode}
             </button>
-            <button 
-              onClick={fireMissile}
-              style={{ padding: '10px 18px', backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
-            >
-              🚀 Fire (Space)
-            </button>
-            <button 
-              onClick={deployFlare}
-              style={{ padding: '10px 18px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
-            >
-              ✨ Flare (F)
-            </button>
-            <button 
-              onClick={handleReset}
-              style={{ padding: '10px 18px', backgroundColor: '#475569', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
-            >
-              🔄 Reset
+            <button onClick={handleReset} style={{ padding: '10px 18px', backgroundColor: '#475569', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+              🔄 Reset Mission
             </button>
           </div>
 
@@ -251,42 +213,50 @@ export default function App() {
             <canvas ref={canvasRef} width={800} height={500} style={{ display: 'block', maxWidth: '100%' }} />
           </div>
 
-          <div style={{ color: '#94a3b8', fontSize: '13px', marginTop: '10px' }}>
-            🎮 <b>Controls:</b> Arrow Keys/WASD to fly | <b>Spacebar:</b> Fire Missile | <b>F:</b> Deploy Flares
+          <div style={{ color: '#94a3b8', fontSize: '14px', marginTop: '10px', backgroundColor: '#1e293b', padding: '10px', borderRadius: '6px' }}>
+            🎮 <b>Controls:</b> Keyboard (Arrow/WASD) to Fly | <b>Spacebar:</b> Fire Missiles | <b>F:</b> Drop Flares
           </div>
         </div>
 
-        {/* Analytics & Health Panel */}
         <div style={{ width: '320px', backgroundColor: '#0f172a', padding: '20px', borderRadius: '8px', border: '1px solid #334155', height: 'fit-content' }}>
-          <h2 style={{ color: '#38bdf8', fontSize: '18px', marginTop: 0 }}>🛡️ Tactical Metrics</h2>
+          <h2 style={{ color: '#38bdf8', fontSize: '18px', marginTop: 0 }}>🛡️ Mission Status</h2>
           <hr style={{ borderColor: '#334155', marginBottom: '15px' }} />
 
-          {/* Enemy Health Bar */}
+          <div style={{ marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'white', fontSize: '14px', marginBottom: '5px', fontWeight: 'bold' }}>
+              <span>HQ Base Integrity:</span>
+              <span style={{ color: baseHealth > 30 ? '#4ade80' : '#ef4444' }}>{baseHealth}%</span>
+            </div>
+            <div style={{ width: '100%', height: '12px', backgroundColor: '#334155', borderRadius: '6px', overflow: 'hidden' }}>
+              <div style={{ width: `${baseHealth}%`, height: '100%', backgroundColor: baseHealth > 50 ? '#38bdf8' : '#ef4444', transition: 'width 0.3s' }}></div>
+            </div>
+          </div>
+
           <div style={{ marginBottom: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', fontSize: '13px', marginBottom: '5px' }}>
               <span>Enemy Drone Health:</span>
               <span>{enemyHealth > 0 ? `${enemyHealth}%` : 'DESTROYED'}</span>
             </div>
-            <div style={{ width: '100%', height: '10px', backgroundColor: '#334155', borderRadius: '5px', overflow: 'hidden' }}>
-              <div style={{ width: `${enemyHealth}%`, height: '100%', backgroundColor: enemyHealth > 50 ? '#22c55e' : enemyHealth > 20 ? '#eab308' : '#ef4444', transition: 'width 0.3s' }}></div>
+            <div style={{ width: '100%', height: '8px', backgroundColor: '#334155', borderRadius: '4px', overflow: 'hidden' }}>
+              <div style={{ width: `${enemyHealth}%`, height: '100%', backgroundColor: enemyHealth > 50 ? '#22c55e' : '#ef4444', transition: 'width 0.3s' }}></div>
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '15px' }}>
             <div style={{ backgroundColor: '#1e293b', padding: '10px', borderRadius: '6px' }}>
-              <span style={{ color: '#94a3b8', fontSize: '12px' }}>Proximity:</span>
-              <div style={{ fontSize: '20px', fontWeight: 'bold', color: enemyHealth === 0 ? '#94a3b8' : (distance < 100 ? '#ef4444' : '#22c55e') }}>
+              <span style={{ color: '#94a3b8', fontSize: '12px' }}>Proximity to Enemy:</span>
+              <div style={{ fontSize: '18px', fontWeight: 'bold', color: enemyHealth === 0 ? '#94a3b8' : (distance < 100 ? '#ef4444' : '#22c55e') }}>
                 {enemyHealth > 0 ? `${distance} m` : 'N/A'}
               </div>
             </div>
             <div style={{ backgroundColor: '#1e293b', padding: '10px', borderRadius: '6px' }}>
-              <span style={{ color: '#94a3b8', fontSize: '12px' }}>Combat Score:</span>
-              <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#eab308' }}>{score}</div>
+              <span style={{ color: '#94a3b8', fontSize: '12px' }}>Mission Score:</span>
+              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#eab308' }}>{score}</div>
             </div>
           </div>
 
           <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '6px' }}>
-            <h3 style={{ color: 'white', fontSize: '13px', margin: '0 0 8px 0' }}>Defense Log:</h3>
+            <h3 style={{ color: 'white', fontSize: '13px', margin: '0 0 8px 0' }}>Combat Log:</h3>
             <div style={{ fontSize: '13px', color: '#94a3b8', display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <div>🚀 Missiles Fired: <b style={{ color: 'white' }}>{stats.missiles}</b></div>
               <div>✨ Flares Deployed: <b style={{ color: 'white' }}>{stats.flares}</b></div>
