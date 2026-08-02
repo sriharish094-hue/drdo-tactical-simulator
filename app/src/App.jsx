@@ -35,6 +35,7 @@ export default function App() {
   const [explosions, setExplosions] = useState([]);
   
   const lastAutoFire = useRef(0);
+  const lastTankFire = useRef({ 'TANK-1': 0, 'TANK-2': 0 }); // Tank Cooldown Tracker
   const movementRef = useRef({ dx: 0, dy: 0 });
 
   // AI Tactical Advisory & Probability States
@@ -117,79 +118,91 @@ export default function App() {
               return enemy;
             });
 
-            // 2. Continuous SAM Missile Fire & AI Advisory Engine
+            // 2. SAM, TANK Fire & AI Advisory
             const aliveEnemies = activeEnemies.filter(e => e.health > 0);
             
-            if (aliveEnemies.length > 0) {
-              // Find closest enemy to HQ
-              let closest = aliveEnemies.reduce((min, e) => {
-                let d = Math.sqrt(Math.pow(e.x - basePos.x, 2) + Math.pow(e.y - basePos.y, 2));
-                return d < min.dist ? { enemy: e, dist: d } : min;
-              }, { enemy: aliveEnemies[0], dist: 9999 });
+            setMissiles(prevMissiles => {
+              let newMissiles = [...prevMissiles];
 
-              let target = closest.enemy;
-              let targetDist = Math.floor(closest.dist);
+              if (aliveEnemies.length > 0) {
+                // Find closest enemy to HQ for SAM and Advisory
+                let closest = aliveEnemies.reduce((min, e) => {
+                  let d = Math.sqrt(Math.pow(e.x - basePos.x, 2) + Math.pow(e.y - basePos.y, 2));
+                  return d < min.dist ? { enemy: e, dist: d } : min;
+                }, { enemy: aliveEnemies[0], dist: 9999 });
 
-              // Calculate Hit Probability %
-              let prob = Math.min(98, Math.max(20, 100 - Math.floor(targetDist / 5)));
-              setHitProbability(prob);
+                let target = closest.enemy;
+                let targetDist = Math.floor(closest.dist);
 
-              // Set Enemy Strategy Text
-              if (targetDist < 150) setEnemyStrategy('PINPOINT SWARM STRIKE ON HQ');
-              else if (targetDist < 300) setEnemyStrategy('TACTICAL FLANKING ATTACK');
-              else setEnemyStrategy('LONG-RANGE HIGH ALTITUDE APPROACH');
+                // Probability & Strategy
+                setHitProbability(Math.min(98, Math.max(20, 100 - Math.floor(targetDist / 5))));
+                if (targetDist < 150) setEnemyStrategy('PINPOINT SWARM STRIKE ON HQ');
+                else if (targetDist < 300) setEnemyStrategy('TACTICAL FLANKING ATTACK');
+                else setEnemyStrategy('LONG-RANGE HIGH ALTITUDE APPROACH');
 
-              // Commander Strategic Suggestion System
-              if (targetDist < 120) {
-                setAdvisorText(`⚠️ CRITICAL: ${target.id} CLOSE TO TANKS/SOLDIERS! ENGAGE JET IMMEDIATELY!`);
-              } else if (targetDist < 250) {
-                setAdvisorText(`💡 SUGGESTION: USE GROUND TANKS / SAM COVER. FLY JET TO INTERCEPT ${target.id}.`);
+                // Advisor
+                if (targetDist < 120) setAdvisorText(`⚠️ CRITICAL: ${target.id} CLOSE TO TANKS! ENGAGE JET IMMEDIATELY!`);
+                else if (targetDist < 250) setAdvisorText(`💡 SUGGESTION: TANKS ENGAGING TARGET. FLY JET TO ASSIST.`);
+                else setAdvisorText(`🛡️ RADAR DETECTED SWARM. LET AUTO-SAM WEAKEN ENEMY FIRST.`);
+
+                // SAM Auto-Fire
+                let objAngle = Math.atan2(target.y - cy, target.x - cx);
+                if (objAngle < 0) objAngle += Math.PI * 2;
+                let diff = sweepAngle - objAngle;
+                if (diff < 0) diff += Math.PI * 2;
+
+                if (diff < 0.5 && Date.now() - lastAutoFire.current > 400 && flares.length === 0) {
+                  newMissiles.push({ x: basePos.x + 30, y: basePos.y - 15, speed: 11, type: 'AUTO', targetId: target.id });
+                  lastAutoFire.current = Date.now();
+                }
+
+                // --- TANK AUTO-FIRE LOGIC ---
+                tanks.forEach(tank => {
+                  // Find closest enemy to THIS specific tank
+                  let closestToTank = aliveEnemies.reduce((min, e) => {
+                    let d = Math.sqrt(Math.pow(e.x - tank.x, 2) + Math.pow(e.y - tank.y, 2));
+                    return d < min.dist ? { enemy: e, dist: d } : min;
+                  }, { enemy: null, dist: 9999 });
+
+                  // If enemy is within 250 radius of the tank, and tank cooldown is over (1.5s)
+                  if (closestToTank.enemy && closestToTank.dist < 250) {
+                    if (Date.now() - (lastTankFire.current[tank.id] || 0) > 1500) {
+                      newMissiles.push({ x: tank.x, y: tank.y - 10, speed: 9, type: 'TANK', targetId: closestToTank.enemy.id });
+                      lastTankFire.current[tank.id] = Date.now();
+                      setExplosions(ex => [...ex, { x: tank.x, y: tank.y - 15, life: 3 }]); // Small muzzle flash
+                    }
+                  }
+                });
               } else {
-                setAdvisorText(`🛡️ RADAR DETECTED SWARM. LET AUTO-SAM WEAKEN ENEMY FIRST.`);
+                setAdvisorText('🎉 ALL THREATS NEUTRALIZED. HQ SECURE.');
+                setHitProbability(0);
+                setEnemyStrategy('NONE');
               }
 
-              // Check if Radar Sweep intersects target -> CONTINUOUS AUTOMATIC LAUNCH
-              let objAngle = Math.atan2(target.y - cy, target.x - cx);
-              if (objAngle < 0) objAngle += Math.PI * 2;
-              let diff = sweepAngle - objAngle;
-              if (diff < 0) diff += Math.PI * 2;
+              // 3. Move Missiles and Check Collisions
+              return newMissiles.map(m => {
+                let activeTargets = enemies.filter(e => e.health > 0);
+                if (activeTargets.length === 0) return null;
 
-              // Continuous SAM Fire (reduced cooldown to 400ms for continuous firing on sweep)
-              if (diff < 0.5 && Date.now() - lastAutoFire.current > 400 && flares.length === 0) {
-                setMissiles(prev => [...prev, { x: basePos.x + 30, y: basePos.y - 15, speed: 11, type: 'AUTO', targetId: target.id }]);
-                lastAutoFire.current = Date.now();
-              }
-            } else {
-              setAdvisorText('🎉 ALL THREATS NEUTRALIZED. HQ SECURE.');
-              setHitProbability(0);
-              setEnemyStrategy('NONE');
-            }
+                let targetEnemy = activeTargets.find(e => e.id === m.targetId) || activeTargets[0];
+                const mdx = targetEnemy.x - m.x, mdy = targetEnemy.y - m.y;
+                const mdist = Math.sqrt(mdx * mdx + mdy * mdy);
+
+                if (mdist < 25) {
+                  // Apply damage based on weapon type
+                  let damage = m.type === 'TANK' ? 20 : 35; // Tanks do 20 DMG, Jet/SAM do 35 DMG
+                  
+                  setEnemies(prev => prev.map(e => e.id === targetEnemy.id ? { ...e, health: Math.max(0, e.health - damage) } : e));
+                  setScore(s => s + 150);
+                  setExplosions(ex => [...ex, { x: targetEnemy.x, y: targetEnemy.y, life: m.type === 'TANK' ? 10 : 15 }]);
+                  return null;
+                }
+                if (mdist < 5) return null;
+                return { ...m, x: m.x + (mdx / mdist) * m.speed, y: m.y + (mdy / mdist) * m.speed };
+              }).filter(Boolean);
+            });
 
             return activeEnemies;
-          });
-
-          // 3. Missiles Movement & Damage System
-          setMissiles(prevMissiles => {
-            return prevMissiles.map(m => {
-              // Find target enemy or nearest alive enemy
-              let activeEnemies = enemies.filter(e => e.health > 0);
-              if (activeEnemies.length === 0) return null;
-
-              let targetEnemy = activeEnemies.find(e => e.id === m.targetId) || activeEnemies[0];
-
-              const mdx = targetEnemy.x - m.x, mdy = targetEnemy.y - m.y;
-              const mdist = Math.sqrt(mdx * mdx + mdy * mdy);
-
-              if (mdist < 25) {
-                // Hit enemy!
-                setEnemies(prev => prev.map(e => e.id === targetEnemy.id ? { ...e, health: Math.max(0, e.health - 35) } : e));
-                setScore(s => s + 150);
-                setExplosions(ex => [...ex, { x: targetEnemy.x, y: targetEnemy.y, life: 15 }]);
-                return null;
-              }
-              if (mdist < 5) return null;
-              return { ...m, x: m.x + (mdx / mdist) * m.speed, y: m.y + (mdy / mdist) * m.speed };
-            }).filter(Boolean);
           });
 
           setFlares(prev => prev.map(f => ({ ...f, life: f.life - 2 })).filter(f => f.life > 0));
@@ -197,21 +210,19 @@ export default function App() {
         }
       }
 
-      // --- CANVAS DRAWING (Tactical Screen) ---
+      // --- CANVAS DRAWING ---
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext('2d');
         const cx = canvas.width / 2, cy = canvas.height / 2;
         const sweepAngle = (Date.now() / 1200) % (Math.PI * 2);
 
-        // Grid & Radar BG
         ctx.fillStyle = 'rgba(2, 6, 23, 0.4)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.strokeStyle = 'rgba(30, 41, 59, 0.6)'; ctx.lineWidth = 1;
         for (let r = 50; r <= 450; r += 50) { ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke(); }
         ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, canvas.height); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(canvas.width, cy); ctx.stroke();
 
-        // Green Sweep Beam
         const radius = Math.max(cx, cy) + 100;
         ctx.save(); ctx.translate(cx, cy); ctx.rotate(sweepAngle);
         ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, radius, 0, 0.25); ctx.lineTo(0, 0);
@@ -243,14 +254,20 @@ export default function App() {
         ctx.lineWidth = 2; ctx.stroke();
         drawTacticalText('SAM', basePos.x + 38, basePos.y - 10, '#eab308');
 
-        // Draw Ground Tanks 🪖
+        // Draw Ground Tanks (Now Active!)
         tanks.forEach(t => {
+          const isFiring = Date.now() - (lastTankFire.current[t.id] || 0) < 200;
           ctx.beginPath(); ctx.rect(t.x - 10, t.y - 6, 20, 12);
-          ctx.strokeStyle = '#22c55e'; ctx.stroke();
+          ctx.strokeStyle = isFiring ? '#f97316' : '#22c55e'; // Flashes orange when firing
+          ctx.fillStyle = isFiring ? 'rgba(249, 115, 22, 0.4)' : 'transparent';
+          ctx.fill(); ctx.stroke();
+          
+          // Tank Turret Line
+          ctx.beginPath(); ctx.moveTo(t.x, t.y); ctx.lineTo(t.x, t.y - 10); ctx.strokeStyle = isFiring ? '#f97316' : '#22c55e'; ctx.stroke();
           drawTacticalText('TANK', t.x - 12, t.y + 16, '#22c55e');
         });
 
-        // Draw Soldiers 🎖️
+        // Draw Soldiers
         soldiers.forEach(s => {
           ctx.beginPath(); ctx.arc(s.x, s.y, 3, 0, Math.PI * 2);
           ctx.fillStyle = '#4ade80'; ctx.fill();
@@ -263,7 +280,7 @@ export default function App() {
         ctx.strokeStyle = `rgba(96, 165, 250, ${Math.max(0.4, jetIllum)})`; ctx.lineWidth = jetIllum > 0.8 ? 2 : 1; ctx.stroke();
         drawTacticalText('BLU-01', ownShip.x + 15, ownShip.y - 5, `rgba(96, 165, 250, ${Math.max(0.5, jetIllum)})`);
 
-        // Multiple Enemies Rendering 🛸
+        // Enemies
         enemies.forEach(enemy => {
           if (enemy.health > 0) {
             const enemyIllum = getIllumination(enemy.x, enemy.y);
@@ -292,9 +309,12 @@ export default function App() {
         });
         
         missiles.forEach(m => {
-          ctx.beginPath(); ctx.arc(m.x, m.y, 4, 0, Math.PI * 2);
-          ctx.fillStyle = m.type === 'AUTO' ? '#eab308' : '#ffffff'; 
-          if (m.type === 'AUTO') { ctx.shadowBlur = 8; ctx.shadowColor = '#eab308'; }
+          ctx.beginPath(); ctx.arc(m.x, m.y, m.type === 'TANK' ? 3 : 4, 0, Math.PI * 2);
+          
+          if (m.type === 'AUTO') { ctx.fillStyle = '#eab308'; ctx.shadowColor = '#eab308'; ctx.shadowBlur = 8; } 
+          else if (m.type === 'TANK') { ctx.fillStyle = '#f97316'; ctx.shadowColor = '#f97316'; ctx.shadowBlur = 6; } // Tank rounds are Orange
+          else { ctx.fillStyle = '#ffffff'; ctx.shadowBlur = 0; }
+          
           ctx.fill(); ctx.shadowBlur = 0;
         });
 
@@ -334,7 +354,6 @@ export default function App() {
         <h1 style={{ color: '#38bdf8', margin: 0, fontSize: '20px' }}>DRDO-C2 // TACTICAL COMMAND CENTER</h1>
       </header>
 
-      {/* AI Commander Tactical Suggestion Box */}
       <div style={{ backgroundColor: '#1e1b4b', border: '1px solid #6366f1', padding: '12px', borderRadius: '6px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
         <span style={{ fontSize: '20px' }}>🧠</span>
         <div>
@@ -344,8 +363,6 @@ export default function App() {
       </div>
 
       <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-        
-        {/* Main Radar Screen */}
         <div style={{ flex: '1 1 500px' }}>
           <div style={{ marginBottom: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button onClick={() => setIsAIActive(!isAIActive)} style={{ padding: '8px 16px', backgroundColor: isAIActive ? '#7f1d1d' : '#14532d', color: isAIActive ? '#fca5a5' : '#86efac', border: '1px solid ' + (isAIActive ? '#ef4444' : '#22c55e'), fontFamily: 'inherit', borderRadius: '4px', cursor: 'pointer' }}>
@@ -360,7 +377,6 @@ export default function App() {
             <canvas ref={canvasRef} width={800} height={500} style={{ display: 'block', width: '100%', height: 'auto' }} />
           </div>
 
-          {/* Mobile On-Screen Controls */}
           <div style={{ display: 'flex', justifyContent: 'space-between', backgroundColor: '#0f172a', padding: '10px', borderRadius: '6px', border: '1px solid #1e293b', gap: '10px', marginTop: '10px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', maxWidth: '180px' }}>
               <div></div>
@@ -378,13 +394,10 @@ export default function App() {
           </div>
         </div>
 
-        {/* Tactical Strategy & Analytics Side Panel */}
         <div style={{ width: '280px', backgroundColor: '#0f172a', padding: '15px', border: '1px solid #1e293b', borderRadius: '6px', height: 'fit-content' }}>
           <h2 style={{ color: '#38bdf8', fontSize: '15px', marginTop: 0, borderBottom: '1px solid #1e293b', paddingBottom: '8px' }}>STRATEGY & METRICS</h2>
           
           <div style={{ display: 'grid', gap: '12px', marginTop: '12px' }}>
-            
-            {/* Probability % Display */}
             <div style={{ backgroundColor: '#1e293b', padding: '10px', borderRadius: '4px', borderLeft: '3px solid #22c55e' }}>
               <div style={{ color: '#94a3b8', fontSize: '10px' }}>INTERCEPT HIT PROBABILITY</div>
               <div style={{ fontSize: '24px', color: hitProbability > 70 ? '#4ade80' : hitProbability > 40 ? '#facc15' : '#ef4444', fontWeight: 'bold' }}>
@@ -392,21 +405,16 @@ export default function App() {
               </div>
             </div>
 
-            {/* Enemy Strategy Display */}
             <div style={{ backgroundColor: '#1e293b', padding: '10px', borderRadius: '4px', borderLeft: '3px solid #ef4444' }}>
               <div style={{ color: '#94a3b8', fontSize: '10px' }}>ENEMY STRATEGY DETECTED</div>
-              <div style={{ fontSize: '11px', color: '#fca5a5', fontWeight: 'bold', marginTop: '4px' }}>
-                {enemyStrategy}
-              </div>
+              <div style={{ fontSize: '11px', color: '#fca5a5', fontWeight: 'bold', marginTop: '4px' }}>{enemyStrategy}</div>
             </div>
 
-            {/* Base & Units Status */}
             <div>
               <div style={{ color: '#64748b', fontSize: '10px' }}>HQ INTEGRITY</div>
               <div style={{ fontSize: '18px', color: baseHealth > 30 ? '#38bdf8' : '#ef4444' }}>{Math.floor(baseHealth)}%</div>
             </div>
 
-            {/* Enemy Targets Status */}
             <div style={{ backgroundColor: '#090d16', padding: '10px', borderRadius: '4px' }}>
               <div style={{ color: '#38bdf8', fontSize: '11px', marginBottom: '6px', fontWeight: 'bold' }}>TARGET SWARM LIST</div>
               {enemies.map(e => (
@@ -417,11 +425,9 @@ export default function App() {
               ))}
             </div>
 
-            {/* Ground Forces */}
             <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-              <div>🛡️ Ground Defense: <b style={{ color: '#4ade80' }}>2 TANKS, 4 INFANTRY</b></div>
+              <div>🛡️ Ground Defense: <b style={{ color: '#4ade80' }}>2 TANKS (ACTIVE)</b></div>
             </div>
-
           </div>
         </div>
 
