@@ -7,25 +7,23 @@ export default function App() {
   const [score, setScore] = useState(0);
   const [baseHealth, setBaseHealth] = useState(100);
   
-  // Tactical Positions
-  const [ownShip, setOwnShip] = useState({ x: 150, y: 350 });
-  const basePos = { x: 400, y: 400 };
+  // Widescreen Tactical Positions (Mapped for 1000x600 Canvas)
+  const [ownShip, setOwnShip] = useState({ x: 200, y: 450 });
+  const basePos = { x: 500, y: 480 };
 
-  // Multiple Enemies
   const [enemies, setEnemies] = useState([
-    { id: 'TRK-01', x: 700, y: 80, health: 100, speed: 1.2 },
-    { id: 'TRK-02', x: 650, y: 420, health: 100, speed: 1.0 },
-    { id: 'TRK-03', x: 750, y: 250, health: 100, speed: 1.5 }
+    { id: 'TRK-01', x: 880, y: 100, health: 100, speed: 1.2 },
+    { id: 'TRK-02', x: 820, y: 520, health: 100, speed: 1.0 },
+    { id: 'TRK-03', x: 950, y: 300, health: 100, speed: 1.5 }
   ]);
 
-  // Ground Units
   const tanks = [
-    { id: 'TANK-1', x: 340, y: 420 },
-    { id: 'TANK-2', x: 460, y: 420 }
+    { id: 'TANK-1', x: 420, y: 500 },
+    { id: 'TANK-2', x: 580, y: 500 }
   ];
   const soldiers = [
-    { id: 'SOL-1', x: 370, y: 450 }, { id: 'SOL-2', x: 390, y: 450 },
-    { id: 'SOL-3', x: 410, y: 450 }, { id: 'SOL-4', x: 430, y: 450 }
+    { id: 'SOL-1', x: 460, y: 530 }, { id: 'SOL-2', x: 485, y: 530 },
+    { id: 'SOL-3', x: 515, y: 530 }, { id: 'SOL-4', x: 540, y: 530 }
   ];
 
   const [missiles, setMissiles] = useState([]);
@@ -36,7 +34,6 @@ export default function App() {
   const lastTankFire = useRef({ 'TANK-1': 0, 'TANK-2': 0 });
   const movementRef = useRef({ dx: 0, dy: 0 });
 
-  // UI States
   const [advisorText, setAdvisorText] = useState('SYSTEM READY. AWAITING COMMANDER DIRECTIVE.');
   const [hitProbability, setHitProbability] = useState(0);
   const [enemyStrategy, setEnemyStrategy] = useState('SCANNING...');
@@ -52,9 +49,7 @@ export default function App() {
       if (e.key === 'f' || e.key === 'F') deployFlare();
     };
     const handleKeyUp = (e) => {
-      if (['ArrowUp', 'w', 'W', 'ArrowDown', 's', 'S', 'ArrowLeft', 'a', 'A', 'ArrowRight', 'd', 'D'].includes(e.key)) {
-        movementRef.current = { dx: 0, dy: 0 };
-      }
+      if (['ArrowUp', 'w', 'W', 'ArrowDown', 's', 'S', 'ArrowLeft', 'a', 'A', 'ArrowRight', 'd', 'D'].includes(e.key)) movementRef.current = { dx: 0, dy: 0 };
     };
     window.addEventListener('keydown', handleKeyDown); window.addEventListener('keyup', handleKeyUp);
     return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
@@ -65,7 +60,6 @@ export default function App() {
   const handleTouchMove = (dx, dy) => (e) => { e.preventDefault(); movementRef.current = { dx, dy }; };
   const handleTouchStop = (e) => { e.preventDefault(); movementRef.current = { dx: 0, dy: 0 }; };
 
-  // Core Loop
   useEffect(() => {
     let animationFrameId;
     let lastTime = performance.now();
@@ -73,10 +67,11 @@ export default function App() {
     const loop = (time) => {
       if (time - lastTime > 30) {
         lastTime = time;
-        setOwnShip(p => ({ x: Math.max(20, Math.min(780, p.x + movementRef.current.dx)), y: Math.max(20, Math.min(480, p.y + movementRef.current.dy)) }));
+        // Expanded Widescreen boundaries (1000x600)
+        setOwnShip(p => ({ x: Math.max(20, Math.min(980, p.x + movementRef.current.dx)), y: Math.max(20, Math.min(580, p.y + movementRef.current.dy)) }));
 
         if (isAIActive && baseHealth > 0) {
-          const cx = 400, cy = 250;
+          const cx = 500, cy = 300; // New Center
           const sweepAngle = (Date.now() / 1200) % (Math.PI * 2);
 
           setEnemies(prevEnemies => {
@@ -111,11 +106,11 @@ export default function App() {
 
                 setHitProbability(Math.min(98, Math.max(20, 100 - Math.floor(targetDist / 5))));
                 if (targetDist < 150) setEnemyStrategy('PINPOINT SWARM STRIKE ON HQ');
-                else if (targetDist < 300) setEnemyStrategy('TACTICAL FLANKING ATTACK');
+                else if (targetDist < 350) setEnemyStrategy('TACTICAL FLANKING ATTACK');
                 else setEnemyStrategy('LONG-RANGE APPROACH');
 
-                if (targetDist < 120) setAdvisorText(`⚠️ CRITICAL: ${target.id} CLOSE TO TANKS! COMMANDER, ENGAGE JET IMMEDIATELY!`);
-                else if (targetDist < 250) setAdvisorText(`💡 SUGGESTION: TANKS ENGAGING TARGET. FLY JET TO ASSIST COMMANDER.`);
+                if (targetDist < 150) setAdvisorText(`⚠️ CRITICAL: ${target.id} CLOSE TO TANKS! COMMANDER, ENGAGE JET IMMEDIATELY!`);
+                else if (targetDist < 300) setAdvisorText(`💡 SUGGESTION: TANKS ENGAGING TARGET. FLY JET TO ASSIST.`);
                 else setAdvisorText(`🛡️ RADAR DETECTED SWARM. LET AUTO-SAM WEAKEN ENEMY FIRST.`);
 
                 let objAngle = Math.atan2(target.y - cy, target.x - cx);
@@ -134,7 +129,7 @@ export default function App() {
                     return d < min.dist ? { enemy: e, dist: d } : min;
                   }, { enemy: null, dist: 9999 });
 
-                  if (closestToTank.enemy && closestToTank.dist < 250 && Date.now() - (lastTankFire.current[tank.id] || 0) > 1500) {
+                  if (closestToTank.enemy && closestToTank.dist < 280 && Date.now() - (lastTankFire.current[tank.id] || 0) > 1500) {
                     newMissiles.push({ x: tank.x, y: tank.y - 10, speed: 9, type: 'TANK', targetId: closestToTank.enemy.id });
                     lastTankFire.current[tank.id] = Date.now();
                     setExplosions(ex => [...ex, { x: tank.x, y: tank.y - 15, life: 3 }]);
@@ -170,20 +165,20 @@ export default function App() {
         }
       }
 
-      // Drawing
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext('2d');
-        const cx = canvas.width / 2, cy = canvas.height / 2;
+        const cx = canvas.width / 2, cy = canvas.height / 2; // Dynamic Center
         const sweepAngle = (Date.now() / 1200) % (Math.PI * 2);
 
         ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.strokeStyle = 'rgba(30, 41, 59, 0.6)'; ctx.lineWidth = 1;
-        for (let r = 50; r <= 450; r += 50) { ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke(); }
+        // Expanded Radar Rings
+        for (let r = 50; r <= 800; r += 50) { ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke(); }
         ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, canvas.height); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(canvas.width, cy); ctx.stroke();
 
-        const radius = Math.max(cx, cy) + 100;
+        const radius = Math.max(cx, cy) + 200;
         ctx.save(); ctx.translate(cx, cy); ctx.rotate(sweepAngle);
         ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, radius, 0, 0.25); ctx.lineTo(0, 0);
         const gradient = ctx.createLinearGradient(0, 0, radius, 0);
@@ -199,54 +194,54 @@ export default function App() {
           if (diff < 0) diff += Math.PI * 2;
           return (diff < 0.2) ? 1.0 : (diff < 1.5 ? 1.0 - (diff / 1.5) : 0.1);
         };
-        const drawTacticalText = (text, x, y, color) => { ctx.fillStyle = color; ctx.font = '10px "Courier New", monospace'; ctx.fillText(text, x, y); };
+        const drawTacticalText = (text, x, y, color) => { ctx.fillStyle = color; ctx.font = '11px "Courier New", monospace'; ctx.fillText(text, x, y); };
 
         const baseIllum = getIllumination(basePos.x, basePos.y);
-        ctx.beginPath(); ctx.rect(basePos.x - 25, basePos.y - 15, 50, 30);
+        ctx.beginPath(); ctx.rect(basePos.x - 30, basePos.y - 15, 60, 30);
         ctx.fillStyle = `rgba(56, 189, 248, ${baseIllum > 0.8 ? 0.4 : 0.05})`; ctx.fill();
         ctx.strokeStyle = `rgba(56, 189, 248, ${Math.max(0.3, baseIllum)})`; ctx.lineWidth = baseIllum > 0.8 ? 2 : 1; ctx.stroke();
         drawTacticalText(`HQ [${Math.floor(baseHealth)}%]`, basePos.x - 25, basePos.y + 30, `rgba(56, 189, 248, ${Math.max(0.5, baseIllum)})`);
         
-        ctx.beginPath(); ctx.arc(basePos.x + 30, basePos.y - 10, 6, 0, Math.PI*2);
+        ctx.beginPath(); ctx.arc(basePos.x + 35, basePos.y - 10, 6, 0, Math.PI*2);
         ctx.strokeStyle = (Date.now() - lastAutoFire.current < 200) ? '#ff0000' : '#eab308'; ctx.lineWidth = 2; ctx.stroke();
-        drawTacticalText('SAM', basePos.x + 38, basePos.y - 10, '#eab308');
+        drawTacticalText('SAM', basePos.x + 45, basePos.y - 10, '#eab308');
 
         tanks.forEach(t => {
           const isFiring = Date.now() - (lastTankFire.current[t.id] || 0) < 200;
-          ctx.beginPath(); ctx.rect(t.x - 10, t.y - 6, 20, 12);
+          ctx.beginPath(); ctx.rect(t.x - 12, t.y - 8, 24, 16);
           ctx.strokeStyle = isFiring ? '#f97316' : '#22c55e'; 
           ctx.fillStyle = isFiring ? 'rgba(249, 115, 22, 0.4)' : 'transparent';
           ctx.fill(); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(t.x, t.y); ctx.lineTo(t.x, t.y - 10); ctx.strokeStyle = isFiring ? '#f97316' : '#22c55e'; ctx.stroke();
-          drawTacticalText('TANK', t.x - 12, t.y + 16, '#22c55e');
+          ctx.beginPath(); ctx.moveTo(t.x, t.y); ctx.lineTo(t.x, t.y - 12); ctx.strokeStyle = isFiring ? '#f97316' : '#22c55e'; ctx.stroke();
+          drawTacticalText('TANK', t.x - 14, t.y + 20, '#22c55e');
         });
 
         soldiers.forEach(s => { ctx.beginPath(); ctx.arc(s.x, s.y, 3, 0, Math.PI * 2); ctx.fillStyle = '#4ade80'; ctx.fill(); });
 
         const jetIllum = getIllumination(ownShip.x, ownShip.y);
-        ctx.beginPath(); ctx.arc(ownShip.x, ownShip.y, 12, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(ownShip.x, ownShip.y, 14, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(96, 165, 250, ${jetIllum > 0.8 ? 0.6 : 0.1})`; ctx.fill();
         ctx.strokeStyle = `rgba(96, 165, 250, ${Math.max(0.4, jetIllum)})`; ctx.lineWidth = jetIllum > 0.8 ? 2 : 1; ctx.stroke();
-        drawTacticalText('BLU-01', ownShip.x + 15, ownShip.y - 5, `rgba(96, 165, 250, ${Math.max(0.5, jetIllum)})`);
+        drawTacticalText('BLU-01', ownShip.x + 18, ownShip.y - 5, `rgba(96, 165, 250, ${Math.max(0.5, jetIllum)})`);
 
         enemies.forEach(enemy => {
           if (enemy.health > 0) {
             const enemyIllum = getIllumination(enemy.x, enemy.y);
             if (enemyIllum > 0.7) {
-              ctx.beginPath(); ctx.arc(enemy.x, enemy.y, 30 * (1 - enemyIllum) + 15, 0, Math.PI*2);
+              ctx.beginPath(); ctx.arc(enemy.x, enemy.y, 35 * (1 - enemyIllum) + 15, 0, Math.PI*2);
               ctx.strokeStyle = `rgba(255, 0, 0, ${(enemyIllum - 0.7) * 3})`; ctx.lineWidth = 3; ctx.stroke();
             }
-            ctx.beginPath(); ctx.moveTo(enemy.x, enemy.y - 12); ctx.lineTo(enemy.x + 12, enemy.y);
-            ctx.lineTo(enemy.x, enemy.y + 12); ctx.lineTo(enemy.x - 12, enemy.y); ctx.closePath();
+            ctx.beginPath(); ctx.moveTo(enemy.x, enemy.y - 14); ctx.lineTo(enemy.x + 14, enemy.y);
+            ctx.lineTo(enemy.x, enemy.y + 14); ctx.lineTo(enemy.x - 14, enemy.y); ctx.closePath();
             if (enemyIllum > 0.7) { ctx.fillStyle = '#ff0000'; ctx.shadowBlur = 15; ctx.shadowColor = '#ff0000'; } else { ctx.fillStyle = 'rgba(255, 0, 0, 0.2)'; ctx.shadowBlur = 0; }
             ctx.fill(); ctx.strokeStyle = `rgba(255, 50, 50, ${Math.max(0.4, enemyIllum)})`; ctx.lineWidth = enemyIllum > 0.7 ? 2.5 : 1; ctx.stroke(); ctx.shadowBlur = 0;
-            drawTacticalText(`${enemy.id} [${enemy.health}%]`, enemy.x + 14, enemy.y - 5, `rgba(255, 50, 50, ${Math.max(0.4, enemyIllum)})`);
+            drawTacticalText(`${enemy.id} [${enemy.health}%]`, enemy.x + 16, enemy.y - 5, `rgba(255, 50, 50, ${Math.max(0.4, enemyIllum)})`);
           }
         });
 
         flares.forEach(f => { ctx.beginPath(); ctx.moveTo(f.x - 5, f.y - 5); ctx.lineTo(f.x + 5, f.y + 5); ctx.moveTo(f.x + 5, f.y - 5); ctx.lineTo(f.x - 5, f.y + 5); ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2; ctx.stroke(); });
         missiles.forEach(m => {
-          ctx.beginPath(); ctx.arc(m.x, m.y, m.type === 'TANK' ? 3 : 4, 0, Math.PI * 2);
+          ctx.beginPath(); ctx.arc(m.x, m.y, m.type === 'TANK' ? 4 : 5, 0, Math.PI * 2);
           if (m.type === 'AUTO') { ctx.fillStyle = '#eab308'; ctx.shadowColor = '#eab308'; ctx.shadowBlur = 8; } 
           else if (m.type === 'TANK') { ctx.fillStyle = '#f97316'; ctx.shadowColor = '#f97316'; ctx.shadowBlur = 6; } 
           else { ctx.fillStyle = '#ffffff'; ctx.shadowBlur = 0; }
@@ -256,7 +251,7 @@ export default function App() {
 
         if (baseHealth <= 0) {
           ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.fillStyle = '#ef4444'; ctx.font = 'bold 28px "Courier New", monospace'; ctx.fillText('SYSTEM FAILURE: HQ BREACHED', 160, 240);
+          ctx.fillStyle = '#ef4444'; ctx.font = 'bold 36px "Courier New", monospace'; ctx.fillText('SYSTEM FAILURE: HQ BREACHED', 220, 300);
         }
       }
       animationFrameId = requestAnimationFrame(loop);
@@ -266,124 +261,95 @@ export default function App() {
   }, [isAIActive, ownShip, enemies, mode, flares, baseHealth, missiles, explosions]);
 
   const handleReset = () => {
-    setOwnShip({ x: 150, y: 350 });
-    setEnemies([{ id: 'TRK-01', x: 700, y: 80, health: 100, speed: 1.2 }, { id: 'TRK-02', x: 650, y: 420, health: 100, speed: 1.0 }, { id: 'TRK-03', x: 750, y: 250, health: 100, speed: 1.5 }]);
+    setOwnShip({ x: 200, y: 450 });
+    setEnemies([{ id: 'TRK-01', x: 880, y: 100, health: 100, speed: 1.2 }, { id: 'TRK-02', x: 820, y: 520, health: 100, speed: 1.0 }, { id: 'TRK-03', x: 950, y: 300, health: 100, speed: 1.5 }]);
     setMissiles([]); setFlares([]); setExplosions([]); setBaseHealth(100); setScore(0);
   };
 
-  const btnStyle = { padding: '15px', backgroundColor: '#1e293b', color: 'white', border: '1px solid #334155', borderRadius: '8px', touchAction: 'none', userSelect: 'none', fontWeight: 'bold', minWidth: '55px', cursor: 'pointer' };
+  const btnStyle = { padding: '12px', backgroundColor: '#1e293b', color: 'white', border: '1px solid #334155', borderRadius: '6px', touchAction: 'none', userSelect: 'none', fontWeight: 'bold', cursor: 'pointer' };
   const activeEnemyCount = enemies.filter(e => e.health > 0).length;
 
   return (
-    // COMMAND ROOM DARK BACKGROUND
-    <div style={{ backgroundColor: '#000000', color: 'white', minHeight: '100vh', padding: '20px', fontFamily: '"Courier New", monospace', backgroundImage: 'radial-gradient(circle, #0f172a 0%, #000000 80%)' }}>
+    <div style={{ backgroundColor: '#000000', color: 'white', minHeight: '100vh', padding: '15px', fontFamily: '"Courier New", monospace', backgroundImage: 'radial-gradient(circle, #0f172a 0%, #000000 90%)', display: 'flex', flexDirection: 'column' }}>
       
-      {/* HEADER BAR */}
-      <header style={{ borderBottom: '2px solid #38bdf8', paddingBottom: '15px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+      {/* HEADER */}
+      <header style={{ borderBottom: '1px solid #38bdf8', paddingBottom: '10px', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexShrink: 0 }}>
         <div>
-          <h1 style={{ color: '#38bdf8', margin: 0, fontSize: '28px', textShadow: '0 0 10px rgba(56, 189, 248, 0.5)' }}>COMMANDER'S TERMINAL // C4ISR</h1>
-          <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '5px', letterSpacing: '1px' }}>DRDO ADVANCED TACTICAL SIMULATION NETWORK</div>
+          <h1 style={{ color: '#38bdf8', margin: 0, fontSize: '24px', textShadow: '0 0 10px rgba(56, 189, 248, 0.4)' }}>COMMANDER'S TERMINAL</h1>
         </div>
-        <div style={{ color: '#4ade80', fontSize: '14px', border: '1px solid #4ade80', padding: '5px 10px', borderRadius: '4px', backgroundColor: 'rgba(74, 222, 128, 0.1)' }}>
+        <div style={{ color: '#4ade80', fontSize: '12px', border: '1px solid #4ade80', padding: '4px 8px', borderRadius: '4px', backgroundColor: 'rgba(74, 222, 128, 0.1)' }}>
           STATUS: ONLINE
         </div>
       </header>
 
-      {/* 3-COLUMN DESK LAYOUT */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(250px, 300px) 1fr minmax(250px, 300px)', gap: '20px', alignItems: 'start' }}>
+      {/* FULLSCREEN GRID LAYOUT - 220px Sides, Center Takes Everything */}
+      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr 220px', gap: '20px', flex: 1, alignItems: 'stretch' }}>
         
-        {/* LEFT MONITOR: ALLIED COMMAND & CONTROLS */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
-          {/* Action Buttons */}
-          <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '8px', border: '1px solid #334155', boxShadow: 'inset 0 0 20px rgba(0,0,0,0.5)' }}>
-            <h2 style={{ color: '#94a3b8', fontSize: '14px', marginTop: 0, marginBottom: '15px', borderBottom: '1px solid #1e293b', paddingBottom: '5px' }}>SYSTEM CONTROLS</h2>
-            <button onClick={() => setIsAIActive(!isAIActive)} style={{ width: '100%', padding: '12px', marginBottom: '10px', backgroundColor: isAIActive ? '#7f1d1d' : '#14532d', color: isAIActive ? '#fca5a5' : '#86efac', border: '1px solid ' + (isAIActive ? '#ef4444' : '#22c55e'), fontFamily: 'inherit', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-              {isAIActive ? '🛑 HALT SIMULATION' : '▶️ INITIATE TRACKING'}
+        {/* LEFT COMPACT MONITOR */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          <div style={{ backgroundColor: '#0f172a', padding: '15px', borderRadius: '6px', border: '1px solid #334155' }}>
+            <h2 style={{ color: '#94a3b8', fontSize: '12px', marginTop: 0, marginBottom: '10px', borderBottom: '1px solid #1e293b', paddingBottom: '5px' }}>SYS CONTROLS</h2>
+            <button onClick={() => setIsAIActive(!isAIActive)} style={{ width: '100%', padding: '10px', marginBottom: '8px', backgroundColor: isAIActive ? '#7f1d1d' : '#14532d', color: isAIActive ? '#fca5a5' : '#86efac', border: '1px solid ' + (isAIActive ? '#ef4444' : '#22c55e'), borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>
+              {isAIActive ? 'HALT TRACKING' : 'INITIATE TRACKING'}
             </button>
-            <button onClick={handleReset} style={{ width: '100%', padding: '12px', backgroundColor: '#1e293b', color: '#cbd5e1', border: '1px solid #475569', fontFamily: 'inherit', borderRadius: '4px', cursor: 'pointer' }}>
-              🔄 RESET FIELD
+            <button onClick={handleReset} style={{ width: '100%', padding: '10px', backgroundColor: '#1e293b', color: '#cbd5e1', border: '1px solid #475569', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>
+              RESET FIELD
             </button>
           </div>
 
-          {/* AI Advisory */}
-          <div style={{ backgroundColor: '#1e1b4b', border: '1px solid #6366f1', padding: '15px', borderRadius: '8px', boxShadow: '0 0 15px rgba(99, 102, 241, 0.2)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-              <span style={{ fontSize: '24px' }}>🧠</span>
-              <div style={{ color: '#818cf8', fontSize: '12px', fontWeight: 'bold' }}>AI ADVISORY SYSTEM</div>
-            </div>
-            <div style={{ color: '#e0e7ff', fontSize: '14px', lineHeight: '1.4' }}>{advisorText}</div>
+          <div style={{ backgroundColor: '#1e1b4b', border: '1px solid #6366f1', padding: '12px', borderRadius: '6px' }}>
+            <div style={{ color: '#818cf8', fontSize: '11px', fontWeight: 'bold', marginBottom: '6px' }}>AI ADVISORY</div>
+            <div style={{ color: '#e0e7ff', fontSize: '12px', lineHeight: '1.4' }}>{advisorText}</div>
           </div>
 
-          {/* Allied Forces */}
-          <div style={{ backgroundColor: 'rgba(20, 83, 45, 0.1)', padding: '15px', border: '1px solid #14532d', borderRadius: '8px' }}>
-            <h2 style={{ color: '#4ade80', fontSize: '15px', marginTop: 0, borderBottom: '1px solid #14532d', paddingBottom: '8px' }}>🛡️ ALLIED FORCES</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '10px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #064e3b', paddingBottom: '5px' }}>
-                <span style={{ color: '#86efac' }}>Fighter Jets:</span> <span style={{ color: '#4ade80', fontWeight: 'bold' }}>1 (BLU-01)</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #064e3b', paddingBottom: '5px' }}>
-                <span style={{ color: '#86efac' }}>Ground Tanks:</span> <span style={{ color: '#4ade80', fontWeight: 'bold' }}>{tanks.length} (Active)</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #064e3b', paddingBottom: '5px' }}>
-                <span style={{ color: '#86efac' }}>Infantry:</span> <span style={{ color: '#4ade80', fontWeight: 'bold' }}>{soldiers.length} (Standby)</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #064e3b', paddingBottom: '5px' }}>
-                <span style={{ color: '#86efac' }}>SAM Battery:</span> <span style={{ color: '#eab308', fontWeight: 'bold' }}>1 (Auto)</span>
-              </div>
-            </div>
-          </div>
-
-        </div>
-
-        {/* CENTER SCREEN: MAIN RADAR CONSOLE */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
-          {/* Radar Screen with CRT Monitor Effect */}
-          <div style={{ position: 'relative', border: '4px solid #1e293b', borderRadius: '12px', backgroundColor: '#020617', padding: '4px', boxShadow: '0 0 30px rgba(0, 0, 0, 0.8)' }}>
-            {/* CRT Scanline Overlay */}
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px)', pointerEvents: 'none', borderRadius: '8px' }}></div>
-            
-            <canvas ref={canvasRef} width={800} height={500} style={{ display: 'block', width: '100%', height: 'auto', borderRadius: '8px', filter: 'contrast(1.1) brightness(1.1)' }} />
-          </div>
-
-          {/* Commander's Physical Console Pad */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', backgroundColor: '#0f172a', padding: '15px 30px', borderRadius: '12px', border: '2px solid #1e293b', borderTop: '4px solid #334155' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', maxWidth: '200px' }}>
-              <div></div><button onPointerDown={handleTouchMove(0, -15)} onPointerUp={handleTouchStop} onPointerLeave={handleTouchStop} style={btnStyle}>W</button><div></div>
-              <button onPointerDown={handleTouchMove(-15, 0)} onPointerUp={handleTouchStop} onPointerLeave={handleTouchStop} style={btnStyle}>A</button>
-              <button onPointerDown={handleTouchMove(0, 15)} onPointerUp={handleTouchStop} onPointerLeave={handleTouchStop} style={btnStyle}>S</button>
-              <button onPointerDown={handleTouchMove(15, 0)} onPointerUp={handleTouchStop} onPointerLeave={handleTouchStop} style={btnStyle}>D</button>
-            </div>
-            
-            <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-              <button onClick={deployFlare} style={{ ...btnStyle, backgroundColor: '#3b82f6', height: '60px', width: '90px', borderRadius: '50px' }}>✨ FLARE</button>
-              <button onClick={fireMissile} style={{ ...btnStyle, backgroundColor: '#dc2626', height: '80px', width: '120px', borderRadius: '10px', fontSize: '18px', boxShadow: '0 5px 0 #991b1b' }}>🚀 FIRE</button>
+          <div style={{ backgroundColor: 'rgba(20, 83, 45, 0.1)', padding: '12px', border: '1px solid #14532d', borderRadius: '6px' }}>
+            <h2 style={{ color: '#4ade80', fontSize: '12px', marginTop: 0, borderBottom: '1px solid #14532d', paddingBottom: '6px' }}>🛡️ ALLIED FORCES</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px', fontSize: '11px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#86efac' }}>Jets:</span> <span style={{ color: '#4ade80', fontWeight: 'bold' }}>1 (BLU-01)</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#86efac' }}>Tanks:</span> <span style={{ color: '#4ade80', fontWeight: 'bold' }}>{tanks.length} (Active)</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#86efac' }}>Infantry:</span> <span style={{ color: '#4ade80', fontWeight: 'bold' }}>{soldiers.length} (Standby)</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#86efac' }}>SAMs:</span> <span style={{ color: '#eab308', fontWeight: 'bold' }}>1 (Auto)</span></div>
             </div>
           </div>
         </div>
 
-        {/* RIGHT MONITOR: THREAT ANALYSIS & INTEL */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {/* CENTER MAXIMIZED WIDESCREEN RADAR */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', height: '100%' }}>
           
-          {/* Enemy Intel */}
-          <div style={{ backgroundColor: 'rgba(127, 29, 29, 0.1)', padding: '15px', border: '1px solid #7f1d1d', borderRadius: '8px' }}>
-            <h2 style={{ color: '#ef4444', fontSize: '15px', marginTop: 0, borderBottom: '1px solid #7f1d1d', paddingBottom: '8px' }}>⚠️ ENEMY INTEL</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '10px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #451a1a', paddingBottom: '5px' }}>
-                <span style={{ color: '#fca5a5' }}>Threat Level:</span> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>SEVERE</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #451a1a', paddingBottom: '5px' }}>
-                <span style={{ color: '#fca5a5' }}>Active Drones:</span> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{activeEnemyCount} / 3</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #451a1a', paddingBottom: '5px' }}>
-                <span style={{ color: '#fca5a5' }}>Unit Type:</span> <span style={{ color: 'white' }}>Kamikaze Swarm</span>
-              </div>
+          {/* Radar Screen fills available space */}
+          <div style={{ flex: 1, position: 'relative', border: '3px solid #1e293b', borderRadius: '8px', backgroundColor: '#020617', boxShadow: '0 0 30px rgba(0, 0, 0, 0.8)', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px)', pointerEvents: 'none', zIndex: 10 }}></div>
+            <canvas ref={canvasRef} width={1000} height={600} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }} />
+          </div>
+
+          {/* Bottom Compact Action Bar */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', backgroundColor: '#0f172a', padding: '10px 20px', borderRadius: '8px', border: '1px solid #1e293b' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
+              <div></div><button onPointerDown={handleTouchMove(0, -15)} onPointerUp={handleTouchStop} onPointerLeave={handleTouchStop} style={{...btnStyle, padding: '8px'}}>W</button><div></div>
+              <button onPointerDown={handleTouchMove(-15, 0)} onPointerUp={handleTouchStop} onPointerLeave={handleTouchStop} style={{...btnStyle, padding: '8px'}}>A</button>
+              <button onPointerDown={handleTouchMove(0, 15)} onPointerUp={handleTouchStop} onPointerLeave={handleTouchStop} style={{...btnStyle, padding: '8px'}}>S</button>
+              <button onPointerDown={handleTouchMove(15, 0)} onPointerUp={handleTouchStop} onPointerLeave={handleTouchStop} style={{...btnStyle, padding: '8px'}}>D</button>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <button onClick={deployFlare} style={{ ...btnStyle, backgroundColor: '#3b82f6', height: '40px', padding: '0 15px', borderRadius: '20px', fontSize: '12px' }}>✨ FLARE</button>
+              <button onClick={fireMissile} style={{ ...btnStyle, backgroundColor: '#dc2626', height: '55px', padding: '0 30px', borderRadius: '8px', fontSize: '16px', boxShadow: '0 4px 0 #991b1b' }}>🚀 FIRE</button>
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT COMPACT MONITOR */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          
+          <div style={{ backgroundColor: 'rgba(127, 29, 29, 0.1)', padding: '12px', border: '1px solid #7f1d1d', borderRadius: '6px' }}>
+            <h2 style={{ color: '#ef4444', fontSize: '12px', marginTop: 0, borderBottom: '1px solid #7f1d1d', paddingBottom: '6px' }}>⚠️ ENEMY INTEL</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px', fontSize: '11px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#fca5a5' }}>Threat:</span> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>SEVERE</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#fca5a5' }}>Drones:</span> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{activeEnemyCount} / 3</span></div>
               
-              <div style={{ backgroundColor: '#451a1a', padding: '10px', borderRadius: '6px', marginTop: '5px' }}>
-                <div style={{ color: '#fca5a5', fontSize: '11px', fontWeight: 'bold', marginBottom: '8px' }}>TARGET SWARM LIST</div>
+              <div style={{ backgroundColor: '#451a1a', padding: '8px', borderRadius: '4px', marginTop: '5px' }}>
+                <div style={{ color: '#fca5a5', fontSize: '10px', fontWeight: 'bold', marginBottom: '6px' }}>SWARM TARGETS</div>
                 {enemies.map(e => (
-                  <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: e.health > 0 ? '#f87171' : '#78350f', marginTop: '6px' }}>
+                  <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: e.health > 0 ? '#f87171' : '#78350f', marginTop: '4px' }}>
                     <span>{e.id}:</span> <span>{e.health > 0 ? `${e.health}% HP` : 'DESTROYED'}</span>
                   </div>
                 ))}
@@ -391,23 +357,20 @@ export default function App() {
             </div>
           </div>
 
-          {/* Strategy & Metrics */}
-          <div style={{ backgroundColor: '#0f172a', padding: '15px', border: '1px solid #1e293b', borderRadius: '8px' }}>
-            <h2 style={{ color: '#38bdf8', fontSize: '15px', marginTop: 0, borderBottom: '1px solid #1e293b', paddingBottom: '8px' }}>📊 LIVE METRICS</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
-              <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '6px', borderLeft: '4px solid #22c55e' }}>
-                <div style={{ color: '#94a3b8', fontSize: '11px' }}>INTERCEPT HIT PROBABILITY</div>
-                <div style={{ fontSize: '28px', color: hitProbability > 70 ? '#4ade80' : hitProbability > 40 ? '#facc15' : '#ef4444', fontWeight: 'bold' }}>{hitProbability}%</div>
+          <div style={{ backgroundColor: '#0f172a', padding: '12px', border: '1px solid #1e293b', borderRadius: '6px' }}>
+            <h2 style={{ color: '#38bdf8', fontSize: '12px', marginTop: 0, borderBottom: '1px solid #1e293b', paddingBottom: '6px' }}>📊 LIVE METRICS</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px' }}>
+              <div style={{ backgroundColor: '#1e293b', padding: '10px', borderRadius: '4px', borderLeft: '3px solid #22c55e' }}>
+                <div style={{ color: '#94a3b8', fontSize: '10px' }}>HIT PROBABILITY</div>
+                <div style={{ fontSize: '20px', color: hitProbability > 70 ? '#4ade80' : hitProbability > 40 ? '#facc15' : '#ef4444', fontWeight: 'bold' }}>{hitProbability}%</div>
               </div>
-              
-              <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '6px', borderLeft: '4px solid #ef4444' }}>
-                <div style={{ color: '#94a3b8', fontSize: '11px' }}>ENEMY STRATEGY DETECTED</div>
-                <div style={{ fontSize: '12px', color: '#fca5a5', fontWeight: 'bold', marginTop: '6px' }}>{enemyStrategy}</div>
+              <div style={{ backgroundColor: '#1e293b', padding: '10px', borderRadius: '4px', borderLeft: '3px solid #ef4444' }}>
+                <div style={{ color: '#94a3b8', fontSize: '10px' }}>DETECTED STRATEGY</div>
+                <div style={{ fontSize: '10px', color: '#fca5a5', fontWeight: 'bold', marginTop: '4px' }}>{enemyStrategy}</div>
               </div>
-              
-              <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '6px', borderLeft: '4px solid #38bdf8' }}>
-                <div style={{ color: '#94a3b8', fontSize: '11px' }}>BASE HQ INTEGRITY</div>
-                <div style={{ fontSize: '22px', color: baseHealth > 30 ? '#38bdf8' : '#ef4444', fontWeight: 'bold' }}>{Math.floor(baseHealth)}%</div>
+              <div style={{ backgroundColor: '#1e293b', padding: '10px', borderRadius: '4px', borderLeft: '3px solid #38bdf8' }}>
+                <div style={{ color: '#94a3b8', fontSize: '10px' }}>HQ INTEGRITY</div>
+                <div style={{ fontSize: '18px', color: baseHealth > 30 ? '#38bdf8' : '#ef4444', fontWeight: 'bold' }}>{Math.floor(baseHealth)}%</div>
               </div>
             </div>
           </div>
