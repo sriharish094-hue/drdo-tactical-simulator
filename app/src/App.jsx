@@ -11,7 +11,6 @@ export default function App() {
   const radarRadius = 360; 
   const [ownShip, setOwnShip] = useState({ x: 500, y: 460 });
 
-  // ADDED: originalSpeed and deathTimer for Continuous Threat Protocol
   const [enemies, setEnemies] = useState([
     { id: 'TRK-01', type: 'FIGHTER JET', x: 950, y: 50, health: 100, speed: 1.8, originalSpeed: 1.8, alt: 24000, deathTimer: 0 },
     { id: 'DRN-02', type: 'STEALTH DRONE', x: 50, y: 650, health: 100, speed: 1.1, originalSpeed: 1.1, alt: 18000, deathTimer: 0 },
@@ -29,8 +28,8 @@ export default function App() {
   const lastDefFire = useRef({ 'DEF-1': 0, 'DEF-2': 0 });
   const movementRef = useRef({ dx: 0, dy: 0 });
 
-  // TOP SECRET: K.A.L.I WEAPON SYSTEM
-  const kaliRef = useRef({ active: false, radius: 0 });
+  // FIXED K.A.L.I WEAPON SYSTEM STATE
+  const kaliRef = useRef({ active: false, radius: 0, opacity: 0 });
 
   const [advisorText, setAdvisorText] = useState('SYSTEM READY. AWAITING COMMANDER DIRECTIVE.');
   const [hitProbability, setHitProbability] = useState(0);
@@ -58,14 +57,14 @@ export default function App() {
 
   const triggerKALI = () => {
     if (baseHealth > 0 && !kaliRef.current.active) {
-      kaliRef.current = { active: true, radius: 10 };
+      kaliRef.current = { active: true, radius: 10, opacity: 1 };
       setAdvisorText('☢️ CLASSIFIED: PROJECT K.A.L.I ACTIVATED. ORBITAL EMP DISCHARGING!');
     }
   };
 
   const handleReset = (newMode = radarMode) => {
     setOwnShip({ x: 500, y: 460 });
-    kaliRef.current.active = false;
+    kaliRef.current = { active: false, radius: 0, opacity: 0 };
     if (newMode === 'AIR') {
       setEnemies([
         { id: 'TRK-01', type: 'FIGHTER JET', x: 950, y: 50, health: 100, speed: 1.8, originalSpeed: 1.8, alt: 24000, deathTimer: 0 },
@@ -101,10 +100,12 @@ export default function App() {
 
         const cx = basePos.x, cy = basePos.y;
 
+        // FIXED K.A.L.I BEAM FADE-OUT LOGIC
         if (kaliRef.current.active) {
-          kaliRef.current.radius += 45; 
-          if (kaliRef.current.radius > 1200) {
-            kaliRef.current.active = false; 
+          kaliRef.current.radius += 40; 
+          kaliRef.current.opacity -= 0.015; // Smoothly fades out
+          if (kaliRef.current.opacity <= 0 || kaliRef.current.radius > 2000) {
+            kaliRef.current = { active: false, radius: 0, opacity: 0 }; // Resets radar back to normal completely
           }
         }
 
@@ -114,19 +115,19 @@ export default function App() {
 
           setEnemies(prevEnemies => {
             let activeEnemies = prevEnemies.map(enemy => {
-              // CONTINUOUS THREAT PROTOCOL: Respawn Logic
+              
+              // CONTINUOUS THREAT PROTOCOL (Enemies respawn after death)
               if (enemy.health <= 0) {
                 const newTimer = enemy.deathTimer + 1;
-                // Wait approx 2 seconds (60 frames) before clearing and respawning
-                if (newTimer > 60) {
+                if (newTimer > 80) { // Wait 2.5 seconds before respawning a new enemy
                   const angle = Math.random() * Math.PI * 2;
-                  const dist = 700 + Math.random() * 300; // Spawn far outside radar
+                  const dist = radarRadius + 200 + Math.random() * 200; // Spawns outside radar
                   return {
                     ...enemy,
-                    x: basePos.x + Math.cos(angle) * dist,
-                    y: basePos.y + Math.sin(angle) * dist,
+                    x: cx + Math.cos(angle) * dist,
+                    y: cy + Math.sin(angle) * dist,
                     health: 100,
-                    speed: enemy.originalSpeed, // Restore speed
+                    speed: enemy.originalSpeed, // Restores movement
                     deathTimer: 0
                   };
                 }
@@ -135,8 +136,8 @@ export default function App() {
 
               const distToCenter = Math.hypot(enemy.x - cx, enemy.y - cy);
               
-              // K.A.L.I EMP HIT LOGIC
-              if (kaliRef.current.active && distToCenter <= kaliRef.current.radius) {
+              // K.A.L.I HIT INSTANT DESTRUCTION
+              if (kaliRef.current.active && kaliRef.current.opacity > 0.5 && distToCenter <= kaliRef.current.radius) {
                 setExplosions(ex => [...ex, { x: enemy.x, y: enemy.y, life: 25 }]); 
                 setScore(s => s + 500);
                 return { ...enemy, health: 0, speed: 0, deathTimer: 0 }; 
@@ -202,8 +203,12 @@ export default function App() {
                       setExplosions(ex => [...ex, { x: unit.x, y: unit.y - 15, life: 3 }]);
                     }
                   });
+                } else if (!kaliRef.current.active) {
+                  setAdvisorText(`SCANNING BORDERS. NO CONTACTS IN ${radarMode === 'AIR' ? 'RADAR' : 'SONAR'}.`);
+                  setHitProbability(0); setEnemyStrategy('APPROACHING...');
                 }
               }
+
               return newMissiles.map(m => {
                 let activeTargets = enemies.filter(e => e.health > 0);
                 if (activeTargets.length === 0) return null;
@@ -245,8 +250,10 @@ export default function App() {
 
         ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+        // K.A.L.I BACKGROUND GLITCH WITH FADE
         if (kaliRef.current.active) {
-          ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.1)' : 'rgba(0,255,255,0.1)';
+          const op = Math.max(0, kaliRef.current.opacity);
+          ctx.fillStyle = Math.random() > 0.5 ? `rgba(255,255,255,${op * 0.15})` : `rgba(0,255,255,${op * 0.15})`;
           ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
 
@@ -324,20 +331,23 @@ export default function App() {
           ctx.strokeStyle = isNavy ? '#7dd3fc' : '#ffffff'; ctx.lineWidth = isNavy ? 1 : 2; ctx.stroke();
         }
 
-        // K.A.L.I BEAM RENDERING
+        // PERFECTED K.A.L.I BEAM RENDERING WITH OPACITY
         if (kaliRef.current.active) {
+          const op = Math.max(0, kaliRef.current.opacity);
+          
           ctx.beginPath();
           ctx.arc(cx, cy, kaliRef.current.radius, 0, Math.PI * 2);
           const kaliGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, kaliRef.current.radius);
-          kaliGrad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-          kaliGrad.addColorStop(0.8, 'rgba(6, 182, 212, 0.8)'); 
+          kaliGrad.addColorStop(0, `rgba(255, 255, 255, ${op})`);
+          kaliGrad.addColorStop(0.8, `rgba(6, 182, 212, ${op * 0.8})`); 
           kaliGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
           ctx.fillStyle = kaliGrad; ctx.fill();
-          ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 10; ctx.stroke();
+          
+          ctx.strokeStyle = `rgba(34, 211, 238, ${op})`; ctx.lineWidth = 10; ctx.stroke();
 
-          ctx.fillStyle = '#ff0000'; ctx.font = 'bold 30px "Courier New", monospace';
-          ctx.shadowBlur = 10; ctx.shadowColor = 'red';
-          ctx.fillText(">> K.A.L.I EMP DISCHARGE <<", cx - 180, cy + (Math.random() * 10 - 5));
+          ctx.fillStyle = `rgba(255, 0, 0, ${op})`; ctx.font = 'bold 32px "Courier New", monospace';
+          ctx.shadowBlur = 10; ctx.shadowColor = `rgba(255, 0, 0, ${op})`;
+          ctx.fillText(">> K.A.L.I EMP DISCHARGE <<", cx - 220, cy + (Math.random() * 10 - 5));
           ctx.shadowBlur = 0;
         }
 
@@ -368,7 +378,6 @@ export default function App() {
         ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2; ctx.stroke();
         drawTacticalText(isNavy ? 'SUB-01' : 'BLU-01', ownShip.x + 10, ownShip.y - 5, '#60a5fa', true);
 
-        // ENEMIES
         enemies.forEach(enemy => {
           const distToCenter = Math.hypot(enemy.x - cx, enemy.y - cy);
           const isInsideRadar = distToCenter <= radarRadius;
@@ -414,9 +423,8 @@ export default function App() {
           ctx.restore();
 
           if (enemy.health <= 0) {
-            // Fading dead signature
             if (isInsideRadar && !kaliRef.current.active) {
-              drawTacticalText(`WRECKAGE`, enemy.x + 15, enemy.y, '#475569');
+              drawTacticalText(`WRECKAGE [T-${Math.max(0, Math.floor((80 - enemy.deathTimer)/30))}s]`, enemy.x + 15, enemy.y, '#475569');
             }
           } else if (isInsideRadar && !kaliRef.current.active) {
             const lineColor = isNavy ? 'rgba(245, 158, 11, 0.5)' : 'rgba(239, 68, 68, 0.5)';
