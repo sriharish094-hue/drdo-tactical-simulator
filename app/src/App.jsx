@@ -3,29 +3,22 @@ import React, { useState, useEffect, useRef } from 'react';
 export default function App() {
   const canvasRef = useRef(null);
   const [isAIActive, setIsAIActive] = useState(false);
-  const [radarMode, setRadarMode] = useState('AIR'); // 'AIR' or 'NAVY'
+  const [radarMode, setRadarMode] = useState('AIR'); 
   const [baseHealth, setBaseHealth] = useState(100);
   const [score, setScore] = useState(0);
   
-  // Widescreen Maximized Dimensions
   const basePos = { x: 500, y: 400 }; 
-  const radarRadius = 380; // Bigger radar radius!
+  const radarRadius = 360; 
   const [ownShip, setOwnShip] = useState({ x: 500, y: 460 });
 
   const [enemies, setEnemies] = useState([
-    { id: 'TRK-01', type: 'FIGHTER JET', x: 950, y: 50, health: 100, speed: 1.8 },
-    { id: 'DRN-02', type: 'STEALTH DRONE', x: 50, y: 650, health: 100, speed: 1.1 },
-    { id: 'BMB-03', type: 'HEAVY BOMBER', x: 900, y: 700, health: 100, speed: 0.7 }
+    { id: 'TRK-01', type: 'FIGHTER JET', x: 950, y: 50, health: 100, speed: 1.8, alt: 24000 },
+    { id: 'DRN-02', type: 'STEALTH DRONE', x: 50, y: 650, health: 100, speed: 1.1, alt: 18000 },
+    { id: 'BMB-03', type: 'HEAVY BOMBER', x: 900, y: 700, health: 100, speed: 0.7, alt: 32000 }
   ]);
 
-  const units = [
-    { id: 'DEF-1', x: 440, y: 450 },
-    { id: 'DEF-2', x: 560, y: 450 }
-  ];
-  const smallUnits = [
-    { id: 'MIN-1', x: 470, y: 470 }, { id: 'MIN-2', x: 490, y: 470 },
-    { id: 'MIN-3', x: 510, y: 470 }, { id: 'MIN-4', x: 530, y: 470 }
-  ];
+  const units = [ { id: 'DEF-1', x: 440, y: 450 }, { id: 'DEF-2', x: 560, y: 450 } ];
+  const smallUnits = [ { id: 'MIN-1', x: 470, y: 470 }, { id: 'MIN-2', x: 490, y: 470 }, { id: 'MIN-3', x: 510, y: 470 }, { id: 'MIN-4', x: 530, y: 470 } ];
 
   const [missiles, setMissiles] = useState([]);
   const [flares, setFlares] = useState([]);
@@ -39,14 +32,13 @@ export default function App() {
   const [hitProbability, setHitProbability] = useState(0);
   const [enemyStrategy, setEnemyStrategy] = useState('SCANNING BORDERS...');
 
-  // KEYBOARD ONLY CONTROLS
   useEffect(() => {
     const handleKeyDown = (e) => {
       const speed = 15;
-      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') movementRef.current = { dx: 0, dy: -speed };
-      if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') movementRef.current = { dx: 0, dy: speed };
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') movementRef.current = { dx: -speed, dy: 0 };
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') movementRef.current = { dx: speed, dy: 0 };
+      if (['ArrowUp', 'w', 'W'].includes(e.key)) movementRef.current = { dx: 0, dy: -speed };
+      if (['ArrowDown', 's', 'S'].includes(e.key)) movementRef.current = { dx: 0, dy: speed };
+      if (['ArrowLeft', 'a', 'A'].includes(e.key)) movementRef.current = { dx: -speed, dy: 0 };
+      if (['ArrowRight', 'd', 'D'].includes(e.key)) movementRef.current = { dx: speed, dy: 0 };
       if (e.code === 'Space') { e.preventDefault(); fireMissile(); }
       if (e.key === 'f' || e.key === 'F') deployFlare();
     };
@@ -60,21 +52,20 @@ export default function App() {
   const fireMissile = () => { if (baseHealth > 0) setMissiles(prev => [...prev, { x: ownShip.x, y: ownShip.y, speed: 12, type: 'MANUAL', targetId: null }]); };
   const deployFlare = () => { if (baseHealth > 0) setFlares(prev => [...prev, { x: ownShip.x, y: ownShip.y, life: 100 }]); };
 
-  // RESET / SWITCH MODE LOGIC
   const handleReset = (newMode = radarMode) => {
     setOwnShip({ x: 500, y: 460 });
     if (newMode === 'AIR') {
       setEnemies([
-        { id: 'TRK-01', type: 'FIGHTER JET', x: 950, y: 50, health: 100, speed: 1.8 },
-        { id: 'DRN-02', type: 'STEALTH DRONE', x: 50, y: 650, health: 100, speed: 1.1 },
-        { id: 'BMB-03', type: 'HEAVY BOMBER', x: 900, y: 700, health: 100, speed: 0.7 }
+        { id: 'TRK-01', type: 'FIGHTER JET', x: 950, y: 50, health: 100, speed: 1.8, alt: 24000 },
+        { id: 'DRN-02', type: 'STEALTH DRONE', x: 50, y: 650, health: 100, speed: 1.1, alt: 18000 },
+        { id: 'BMB-03', type: 'HEAVY BOMBER', x: 900, y: 700, health: 100, speed: 0.7, alt: 32000 }
       ]);
       setAdvisorText('AIRSPACE RADAR INITIALIZED.');
     } else {
       setEnemies([
-        { id: 'SUB-01', type: 'ATTACK SUB', x: 950, y: 50, health: 100, speed: 1.3 },
-        { id: 'FRG-02', type: 'FRIGATE', x: 50, y: 650, health: 100, speed: 0.9 },
-        { id: 'CRU-03', type: 'BATTLE CRUISER', x: 900, y: 700, health: 100, speed: 0.6 }
+        { id: 'SUB-01', type: 'ATTACK SUB', x: 950, y: 50, health: 100, speed: 1.3, alt: -400 },
+        { id: 'FRG-02', type: 'FRIGATE', x: 50, y: 650, health: 100, speed: 0.9, alt: 0 },
+        { id: 'CRU-03', type: 'BATTLE CRUISER', x: 900, y: 700, health: 100, speed: 0.6, alt: 0 }
       ]);
       setAdvisorText('NAVAL SONAR INITIALIZED. TRACKING SUBS.');
     }
@@ -87,7 +78,6 @@ export default function App() {
     handleReset(nextMode);
   };
 
-  // CORE LOOP
   useEffect(() => {
     let animationFrameId;
     let lastTime = performance.now();
@@ -99,7 +89,7 @@ export default function App() {
 
         if (isAIActive && baseHealth > 0) {
           const cx = basePos.x, cy = basePos.y;
-          const sweepAngle = (Date.now() / (radarMode === 'AIR' ? 1200 : 1600)) % (Math.PI * 2); // Sonar is slightly slower
+          const sweepAngle = (Date.now() / (radarMode === 'AIR' ? 1200 : 1600)) % (Math.PI * 2);
 
           setEnemies(prevEnemies => {
             let activeEnemies = prevEnemies.map(enemy => {
@@ -123,7 +113,6 @@ export default function App() {
               let newMissiles = [...prevMissiles];
               if (aliveEnemies.length > 0) {
                 let visibleEnemies = aliveEnemies.filter(e => Math.hypot(e.x - cx, e.y - cy) <= radarRadius);
-
                 if (visibleEnemies.length > 0) {
                   let closest = visibleEnemies.reduce((min, e) => {
                     let d = Math.hypot(e.x - basePos.x, e.y - basePos.y);
@@ -139,7 +128,7 @@ export default function App() {
                   else setEnemyStrategy(radarMode === 'AIR' ? 'TARGET DETECTED ON RADAR' : 'SONAR CONTACT ACQUIRED');
 
                   if (targetDist < 120) setAdvisorText(`⚠️ ALARM: ${target.id} (${target.type}) BREACHED INNER DEFENSE!`);
-                  else setAdvisorText(`🚨 ${radarMode === 'AIR' ? 'RADAR' : 'SONAR'} ALERT: BOGIES IN RANGE. AUTO-DEFENSE ACTIVE.`);
+                  else setAdvisorText(`🚨 ${radarMode === 'AIR' ? 'RADAR' : 'SONAR'} ALERT: BOGIES IN RANGE.`);
 
                   let objAngle = Math.atan2(target.y - cy, target.x - cx);
                   if (objAngle < 0) objAngle += Math.PI * 2;
@@ -163,12 +152,8 @@ export default function App() {
                       setExplosions(ex => [...ex, { x: unit.x, y: unit.y - 15, life: 3 }]);
                     }
                   });
-                } else {
-                  setAdvisorText(`SCANNING BORDERS. NO CONTACTS IN ${radarMode === 'AIR' ? 'RADAR' : 'SONAR'}.`);
-                  setHitProbability(0); setEnemyStrategy('APPROACHING...');
                 }
               }
-
               return newMissiles.map(m => {
                 let activeTargets = enemies.filter(e => e.health > 0);
                 if (activeTargets.length === 0) return null;
@@ -193,168 +178,197 @@ export default function App() {
         }
       }
 
-      // --- CANVAS DRAWING ---
+      // --- ADVANCED CANVAS DRAWING ---
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext('2d');
         const cx = basePos.x, cy = basePos.y; 
         const sweepAngle = (Date.now() / (radarMode === 'AIR' ? 1200 : 1600)) % (Math.PI * 2);
 
-        // Styling based on Mode
         const isNavy = radarMode === 'NAVY';
-        const radarBgColor = isNavy ? '#041e3a' : '#022c11';
-        const radarLineColor = isNavy ? 'rgba(56, 189, 248, 0.4)' : 'rgba(34, 197, 94, 0.4)';
-        const radarSweepColorSolid = isNavy ? '#38bdf8' : '#4ade80';
-        const radarSweepColorFade = isNavy ? 'rgba(56, 189, 248, 0.6)' : 'rgba(34, 197, 94, 0.6)';
-        const radarSweepColorClear = isNavy ? 'rgba(56, 189, 248, 0)' : 'rgba(34, 197, 94, 0)';
+        const radarBgColor = isNavy ? '#021024' : '#011c09'; // Darker, more realistic BG
+        const radarLineColor = isNavy ? 'rgba(56, 189, 248, 0.3)' : 'rgba(34, 197, 94, 0.3)';
+        const radarSweepColorSolid = isNavy ? 'rgba(56, 189, 248, 0.8)' : 'rgba(74, 222, 128, 0.8)';
+        const textColor = isNavy ? '#38bdf8' : '#4ade80';
 
         ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Radar Outer Bezel
-        ctx.beginPath(); ctx.arc(cx, cy, radarRadius + 15, 0, Math.PI * 2);
-        ctx.fillStyle = '#1e293b'; ctx.fill(); 
-        ctx.strokeStyle = '#475569'; ctx.lineWidth = 4; ctx.stroke();
+        // Advanced Bezel with Degree Markers
+        ctx.beginPath(); ctx.arc(cx, cy, radarRadius + 25, 0, Math.PI * 2);
+        ctx.fillStyle = '#0f172a'; ctx.fill(); 
+        ctx.strokeStyle = '#334155'; ctx.lineWidth = 2; ctx.stroke();
         
-        ctx.beginPath(); ctx.arc(cx, cy, radarRadius + 5, 0, Math.PI * 2);
-        ctx.fillStyle = '#0f172a'; ctx.fill();
+        ctx.font = '10px "Courier New", monospace';
+        ctx.fillStyle = '#94a3b8';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // Draw Degrees around Bezel
+        for(let i=0; i<360; i+=15) {
+          const rad = (i - 90) * (Math.PI / 180);
+          const isMajor = i % 90 === 0;
+          const outerR = radarRadius + (isMajor ? 20 : 12);
+          const innerR = radarRadius + 2;
+          
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(rad) * innerR, cy + Math.sin(rad) * innerR);
+          ctx.lineTo(cx + Math.cos(rad) * (radarRadius + (isMajor ? 8 : 6)), cy + Math.sin(rad) * (radarRadius + (isMajor ? 8 : 6)));
+          ctx.strokeStyle = isMajor ? textColor : '#475569';
+          ctx.lineWidth = isMajor ? 2 : 1;
+          ctx.stroke();
 
+          if(i % 30 === 0) {
+             let text = i.toString().padStart(3, '0');
+             if(i===0) text = 'N 000'; if(i===90) text = 'E 090'; if(i===180) text = 'S 180'; if(i===270) text = 'W 270';
+             ctx.fillStyle = isMajor ? '#ffffff' : '#94a3b8';
+             ctx.fillText(text, cx + Math.cos(rad) * outerR, cy + Math.sin(rad) * outerR);
+          }
+        }
+        ctx.textAlign = 'left'; // Reset
+
+        // RADAR MASK
         ctx.save();
         ctx.beginPath(); ctx.arc(cx, cy, radarRadius, 0, Math.PI * 2);
         ctx.clip();
         ctx.fillStyle = radarBgColor; ctx.fill();
 
-        // Radar Grid
+        // Advanced Grid (Azimuth Lines)
         ctx.strokeStyle = radarLineColor; ctx.lineWidth = 1;
-        for (let r = 50; r <= radarRadius; r += 50) {
-          ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+        for (let i=0; i<360; i+=30) {
+          const rad = i * (Math.PI / 180);
+          ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(rad) * radarRadius, cy + Math.sin(rad) * radarRadius); ctx.stroke();
         }
-        ctx.beginPath(); ctx.moveTo(cx, cy - radarRadius); ctx.lineTo(cx, cy + radarRadius); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(cx - radarRadius, cy); ctx.lineTo(cx + radarRadius, cy); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(cx - radarRadius*0.7, cy - radarRadius*0.7); ctx.lineTo(cx + radarRadius*0.7, cy + radarRadius*0.7); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(cx + radarRadius*0.7, cy - radarRadius*0.7); ctx.lineTo(cx - radarRadius*0.7, cy + radarRadius*0.7); ctx.stroke();
+        
+        // Concentric Distance Rings
+        for (let r = 60; r <= radarRadius; r += 60) {
+          ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+          ctx.fillStyle = radarLineColor;
+          ctx.fillText(`${r/2}NM`, cx + 2, cy - r - 2);
+        }
 
-        // Sweep
-        ctx.save(); ctx.translate(cx, cy); ctx.rotate(sweepAngle);
-        ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, radarRadius, 0, 0.25); ctx.lineTo(0, 0);
-        const gradient = ctx.createLinearGradient(0, 0, radarRadius, 0);
-        gradient.addColorStop(0, radarSweepColorFade); gradient.addColorStop(1, radarSweepColorClear);
-        ctx.fillStyle = gradient; ctx.fill();
-        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(radarRadius, 0);
-        ctx.strokeStyle = radarSweepColorSolid; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+        // Realistic Conic Sweep Effect (Supported in modern browsers)
+        if (ctx.createConicGradient) {
+          const gradient = ctx.createConicGradient(sweepAngle - Math.PI/2, cx, cy);
+          gradient.addColorStop(0, radarSweepColorSolid); // Head
+          gradient.addColorStop(0.1, isNavy ? 'rgba(56,189,248,0.2)' : 'rgba(34,197,94,0.2)'); // Tail
+          gradient.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = gradient;
+          ctx.beginPath(); ctx.arc(cx, cy, radarRadius, 0, Math.PI*2); ctx.fill();
+        } else {
+          // Fallback if no conic gradient
+          ctx.save(); ctx.translate(cx, cy); ctx.rotate(sweepAngle);
+          ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, radarRadius, 0, 0.25); ctx.lineTo(0, 0);
+          const gradient = ctx.createLinearGradient(0, 0, radarRadius, 0);
+          gradient.addColorStop(0, radarSweepColorSolid); gradient.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = gradient; ctx.fill(); ctx.restore();
+        }
+        
+        // Radar Sweep Leading Line
+        ctx.beginPath(); ctx.moveTo(cx, cy); 
+        ctx.lineTo(cx + Math.cos(sweepAngle)*radarRadius, cy + Math.sin(sweepAngle)*radarRadius);
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
 
         ctx.restore(); // END MASK
 
-        const drawTacticalText = (text, x, y, color) => { ctx.fillStyle = color; ctx.font = '10px "Courier New", monospace'; ctx.fillText(text, x, y); };
+        const drawTacticalText = (text, x, y, color, bold=false) => { 
+          ctx.fillStyle = color; ctx.font = `${bold ? 'bold ' : ''}10px "Courier New", monospace`; ctx.fillText(text, x, y); 
+        };
 
-        // HQ
-        ctx.beginPath(); ctx.rect(basePos.x - 20, basePos.y - 12, 40, 24);
+        // HQ / Center Base
+        ctx.beginPath(); ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 10, cy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy + 10); ctx.stroke();
+        ctx.beginPath(); ctx.rect(cx - 15, cy - 10, 30, 20);
         ctx.fillStyle = `rgba(56, 189, 248, 0.2)`; ctx.fill();
         ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1; ctx.stroke();
-        drawTacticalText(`HQ [${Math.floor(baseHealth)}%]`, basePos.x - 25, basePos.y + 25, '#38bdf8');
-        
-        ctx.beginPath(); ctx.arc(basePos.x + 25, basePos.y - 8, 5, 0, Math.PI*2);
-        ctx.strokeStyle = (Date.now() - lastAutoFire.current < 200) ? '#ff0000' : '#eab308'; ctx.lineWidth = 2; ctx.stroke();
+        drawTacticalText(`HQ-SYS [${Math.floor(baseHealth)}%]`, cx + 20, cy + 5, '#38bdf8', true);
 
-        // Defense Units (Tanks or Cruisers)
+        // Defenses
         units.forEach(u => {
           const isFiring = Date.now() - (lastDefFire.current[u.id] || 0) < 200;
-          ctx.beginPath(); ctx.rect(u.x - 10, u.y - 6, 20, 12);
-          ctx.strokeStyle = isFiring ? '#f97316' : (isNavy ? '#38bdf8' : '#22c55e'); 
+          ctx.beginPath(); ctx.rect(u.x - 8, u.y - 6, 16, 12);
+          ctx.strokeStyle = isFiring ? '#f97316' : textColor; 
           ctx.fillStyle = isFiring ? 'rgba(249, 115, 22, 0.4)' : 'transparent';
           ctx.fill(); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(u.x, u.y); ctx.lineTo(u.x, u.y - 10); ctx.strokeStyle = isFiring ? '#f97316' : (isNavy ? '#38bdf8' : '#22c55e'); ctx.stroke();
-          drawTacticalText(isNavy ? 'CRUISER' : 'TANK', u.x - 16, u.y + 16, isNavy ? '#38bdf8' : '#22c55e');
+          drawTacticalText(isNavy ? 'CRU' : 'TNK', u.x - 10, u.y + 14, textColor);
         });
 
-        smallUnits.forEach(s => { ctx.beginPath(); ctx.arc(s.x, s.y, 3, 0, Math.PI * 2); ctx.fillStyle = isNavy ? '#38bdf8' : '#4ade80'; ctx.fill(); });
-
-        // Own Ship/Jet
-        ctx.beginPath(); ctx.arc(ownShip.x, ownShip.y, 10, 0, Math.PI * 2);
+        // Own Jet
+        ctx.beginPath(); ctx.arc(ownShip.x, ownShip.y, 8, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(96, 165, 250, 0.4)`; ctx.fill();
         ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2; ctx.stroke();
-        drawTacticalText(isNavy ? 'SUB-01' : 'BLU-01', ownShip.x + 12, ownShip.y - 5, '#60a5fa');
+        drawTacticalText(isNavy ? 'SUB-01' : 'BLU-01', ownShip.x + 10, ownShip.y - 5, '#60a5fa', true);
 
-        // ENEMIES
+        // ADVANCED ENEMY RENDERING
         enemies.forEach(enemy => {
           if (enemy.health > 0) {
             const distToCenter = Math.hypot(enemy.x - cx, enemy.y - cy);
             const isInsideRadar = distToCenter <= radarRadius;
             
+            // Calculate Bearing (0-360 degrees)
+            let bearing = (Math.atan2(enemy.y - cy, enemy.x - cx) * 180 / Math.PI) + 90;
+            if (bearing < 0) bearing += 360;
+            
             const jetColor = isInsideRadar ? '#ef4444' : '#eab308'; 
             const glowColor = isInsideRadar ? '#dc2626' : '#ca8a04';
-
+            
             let tx = basePos.x, ty = basePos.y;
             if (flares.length > 0) { tx = flares[0].x; ty = flares[0].y; }
             const angle = Math.atan2(ty - enemy.y, tx - enemy.x) + (Math.PI / 2);
 
             ctx.save();
             ctx.translate(enemy.x, enemy.y);
-            ctx.rotate(angle);
+            
+            // Draw Advanced Target Bracket [ ]
+            if(isInsideRadar) {
+              ctx.beginPath();
+              const bSize = 18;
+              // Top Left
+              ctx.moveTo(-bSize, -bSize/2); ctx.lineTo(-bSize, -bSize); ctx.lineTo(-bSize/2, -bSize);
+              // Top Right
+              ctx.moveTo(bSize/2, -bSize); ctx.lineTo(bSize, -bSize); ctx.lineTo(bSize, -bSize/2);
+              // Bottom Right
+              ctx.moveTo(bSize, bSize/2); ctx.lineTo(bSize, bSize); ctx.lineTo(bSize/2, bSize);
+              // Bottom Left
+              ctx.moveTo(-bSize/2, bSize); ctx.lineTo(-bSize, bSize); ctx.lineTo(-bSize, bSize/2);
+              ctx.strokeStyle = 'rgba(239, 68, 68, 0.7)'; ctx.lineWidth = 2; ctx.stroke();
+            }
 
+            // Draw Jet/Sub Shape
+            ctx.rotate(angle);
             ctx.beginPath();
             if (isNavy) {
-              // Naval Submarine Shape
-              ctx.moveTo(0, -14);
-              ctx.lineTo(4, -8);
-              ctx.lineTo(4, 10);
-              ctx.lineTo(0, 14);
-              ctx.lineTo(-4, 10);
-              ctx.lineTo(-4, -8);
+              ctx.moveTo(0, -12); ctx.lineTo(4, -6); ctx.lineTo(4, 8); ctx.lineTo(0, 12); ctx.lineTo(-4, 8); ctx.lineTo(-4, -6);
             } else {
-              // Air Jet Shape
-              ctx.moveTo(0, -16); 
-              ctx.lineTo(4, -4);
-              ctx.lineTo(16, 2); 
-              ctx.lineTo(4, 6);
-              ctx.lineTo(2, 12);
-              ctx.lineTo(8, 16); 
-              ctx.lineTo(-8, 16); 
-              ctx.lineTo(-2, 12);
-              ctx.lineTo(-4, 6);
-              ctx.lineTo(-16, 2); 
-              ctx.lineTo(-4, -4);
+              ctx.moveTo(0, -14); ctx.lineTo(4, -4); ctx.lineTo(14, 2); ctx.lineTo(4, 6); ctx.lineTo(2, 10); ctx.lineTo(8, 14); ctx.lineTo(-8, 14); ctx.lineTo(-2, 10); ctx.lineTo(-4, 6); ctx.lineTo(-14, 2); ctx.lineTo(-4, -4);
             }
             ctx.closePath();
-
-            ctx.fillStyle = jetColor;
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = glowColor;
-            ctx.fill();
-            
-            ctx.lineWidth = 1;
-            ctx.strokeStyle = isInsideRadar ? '#ffffff' : '#000000';
-            ctx.stroke();
+            ctx.fillStyle = jetColor; ctx.shadowBlur = 10; ctx.shadowColor = glowColor; ctx.fill();
+            ctx.lineWidth = 1; ctx.strokeStyle = isInsideRadar ? '#ffffff' : '#000000'; ctx.stroke();
             ctx.restore();
 
-            // DISPLAY TELEMETRY
+            // ADVANCED HUD TEXT
             if (isInsideRadar) {
-              ctx.beginPath(); ctx.moveTo(enemy.x + 12, enemy.y - 12); 
-              ctx.lineTo(enemy.x + 20, enemy.y - 20); 
-              ctx.lineTo(enemy.x + 40, enemy.y - 20); 
-              ctx.strokeStyle = '#ff0000'; ctx.lineWidth = 1.5; ctx.stroke();
+              // Line to text block
+              ctx.beginPath(); ctx.moveTo(enemy.x + 18, enemy.y - 18); 
+              ctx.lineTo(enemy.x + 25, enemy.y - 25); 
+              ctx.lineTo(enemy.x + 45, enemy.y - 25); 
+              ctx.strokeStyle = 'rgba(239, 68, 68, 0.5)'; ctx.lineWidth = 1; ctx.stroke();
               
-              drawTacticalText(`${enemy.id} [${enemy.type}]`, enemy.x + 43, enemy.y - 22, '#ff0000');
-              drawTacticalText(`SPD: MACH ${enemy.speed.toFixed(1)}`, enemy.x + 43, enemy.y - 10, '#ff0000');
-              drawTacticalText(`HP:  ${enemy.health}%`, enemy.x + 43, enemy.y + 2, '#ff0000');
+              drawTacticalText(`${enemy.id}`, enemy.x + 50, enemy.y - 30, '#ff0000', true);
+              drawTacticalText(`BRG: ${Math.floor(bearing)}°`, enemy.x + 50, enemy.y - 18, '#fca5a5');
+              drawTacticalText(`DST: ${Math.floor(distToCenter/2)}NM`, enemy.x + 50, enemy.y - 8, '#fca5a5');
+              drawTacticalText(`${isNavy?'DPT':'ALT'}: ${enemy.alt}`, enemy.x + 50, enemy.y + 2, '#fca5a5');
+              drawTacticalText(`SPD: M${enemy.speed.toFixed(1)}`, enemy.x + 50, enemy.y + 12, '#facc15');
             } else {
-              drawTacticalText(`BOGEY [MACH ${enemy.speed.toFixed(1)}]`, enemy.x + 18, enemy.y, '#facc15');
+              drawTacticalText(`UFO M${enemy.speed.toFixed(1)}`, enemy.x + 15, enemy.y, '#facc15');
             }
           }
         });
 
         // Weapons
         flares.forEach(f => { ctx.beginPath(); ctx.moveTo(f.x - 5, f.y - 5); ctx.lineTo(f.x + 5, f.y + 5); ctx.moveTo(f.x + 5, f.y - 5); ctx.lineTo(f.x - 5, f.y + 5); ctx.strokeStyle = isNavy ? '#38bdf8' : '#facc15'; ctx.lineWidth = 2; ctx.stroke(); });
-        missiles.forEach(m => {
-          ctx.beginPath(); ctx.arc(m.x, m.y, 3, 0, Math.PI * 2);
-          ctx.fillStyle = m.type === 'AUTO' ? '#eab308' : (m.type === 'TANK' ? '#f97316' : '#ffffff');
-          ctx.fill();
-        });
+        missiles.forEach(m => { ctx.beginPath(); ctx.arc(m.x, m.y, 3, 0, Math.PI * 2); ctx.fillStyle = m.type === 'AUTO' ? '#eab308' : (m.type === 'TANK' ? '#f97316' : '#ffffff'); ctx.fill(); });
         explosions.forEach(e => { ctx.beginPath(); ctx.arc(e.x, e.y, (15 - e.life) * 2, 0, Math.PI * 2); ctx.strokeStyle = `rgba(239, 68, 68, ${e.life / 15})`; ctx.lineWidth = 3; ctx.stroke(); });
-
-        if (baseHealth <= 0) {
-          ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.fillStyle = '#ef4444'; ctx.font = 'bold 36px "Courier New", monospace'; ctx.fillText('SYSTEM FAILURE: HQ BREACHED', 220, 350);
-        }
       }
       animationFrameId = requestAnimationFrame(loop);
     };
@@ -368,23 +382,19 @@ export default function App() {
     <div style={{ backgroundColor: '#000000', color: 'white', minHeight: '100vh', padding: '15px', fontFamily: '"Courier New", monospace', backgroundImage: 'radial-gradient(circle, #0f172a 0%, #000000 90%)', display: 'flex', flexDirection: 'column' }}>
       
       <header style={{ borderBottom: '1px solid #38bdf8', paddingBottom: '10px', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexShrink: 0 }}>
-        <div><h1 style={{ color: '#38bdf8', margin: 0, fontSize: '24px', textShadow: '0 0 10px rgba(56, 189, 248, 0.4)' }}>COMMANDER'S TERMINAL</h1></div>
-        <div style={{ color: '#4ade80', fontSize: '12px', border: '1px solid #4ade80', padding: '4px 8px', borderRadius: '4px', backgroundColor: 'rgba(74, 222, 128, 0.1)' }}>STATUS: ONLINE</div>
+        <div><h1 style={{ color: '#38bdf8', margin: 0, fontSize: '24px', textShadow: '0 0 10px rgba(56, 189, 248, 0.4)' }}>COMMANDER'S TERMINAL // C4ISR SYSTEM</h1></div>
+        <div style={{ color: '#4ade80', fontSize: '12px', border: '1px solid #4ade80', padding: '4px 8px', borderRadius: '4px', backgroundColor: 'rgba(74, 222, 128, 0.1)' }}>STATUS: SECURE LINK</div>
       </header>
 
       <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr 250px', gap: '20px', flex: 1, alignItems: 'stretch' }}>
         
         {/* LEFT PANEL */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          
           <div style={{ backgroundColor: '#0f172a', padding: '15px', borderRadius: '6px', border: '1px solid #334155', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)' }}>
             <h2 style={{ color: '#94a3b8', fontSize: '12px', marginTop: 0, marginBottom: '10px', borderBottom: '1px solid #1e293b', paddingBottom: '5px' }}>SYS CONTROLS</h2>
-            
-            {/* NEW NAVY/AIR TOGGLE BUTTON */}
             <button onClick={toggleMode} style={{ width: '100%', padding: '10px', marginBottom: '12px', backgroundColor: radarMode === 'NAVY' ? '#082f49' : '#022c11', color: radarMode === 'NAVY' ? '#7dd3fc' : '#86efac', border: '1px solid ' + (radarMode === 'NAVY' ? '#0ea5e9' : '#22c55e'), borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
               {radarMode === 'AIR' ? '✈️ AIR RADAR MODE' : '🌊 NAVAL SONAR MODE'}
             </button>
-
             <button onClick={() => setIsAIActive(!isAIActive)} style={{ width: '100%', padding: '10px', marginBottom: '8px', backgroundColor: isAIActive ? '#7f1d1d' : '#1e293b', color: isAIActive ? '#fca5a5' : '#cbd5e1', border: '1px solid ' + (isAIActive ? '#ef4444' : '#475569'), borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>
               {isAIActive ? 'HALT TRACKING' : 'INITIATE TRACKING'}
             </button>
@@ -401,20 +411,16 @@ export default function App() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px', fontSize: '11px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#94a3b8' }}>Unit:</span> <span style={{ color: radarMode === 'NAVY' ? '#38bdf8' : '#4ade80', fontWeight: 'bold' }}>1 ({radarMode === 'AIR' ? 'BLU-01 Jet' : 'Submarine'})</span></div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#94a3b8' }}>Defenses:</span> <span style={{ color: radarMode === 'NAVY' ? '#38bdf8' : '#4ade80', fontWeight: 'bold' }}>{units.length} ({radarMode === 'AIR' ? 'Tanks' : 'Cruisers'})</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#94a3b8' }}>Turrets:</span> <span style={{ color: radarMode === 'NAVY' ? '#38bdf8' : '#4ade80', fontWeight: 'bold' }}>{smallUnits.length} (Active)</span></div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#94a3b8' }}>{radarMode === 'AIR' ? 'SAMs:' : 'Torpedo:'}</span> <span style={{ color: '#eab308', fontWeight: 'bold' }}>1 (Auto)</span></div>
-            </div>
-            <div style={{ marginTop: '15px', paddingTop: '10px', borderTop: '1px solid #334155', color: '#94a3b8', fontSize: '10px' }}>
-              <b>CONTROLS:</b><br/>[W,A,S,D] - Move<br/>[SPACE] - Fire Weapon<br/>[F] - Deploy Countermeasure
             </div>
           </div>
         </div>
 
-        {/* CENTER WIDESCREEN RADAR (MAX HEIGHT NOW) */}
+        {/* CENTER WIDESCREEN RADAR */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', height: '100%' }}>
-          <div style={{ flex: 1, position: 'relative', border: '3px solid #1e293b', borderRadius: '8px', backgroundColor: '#020617', boxShadow: '0 0 30px rgba(0, 0, 0, 0.8)', overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px)', pointerEvents: 'none', zIndex: 10 }}></div>
-            {/* CANVAS HEIGHT INCREASED SINCE BOTTOM CONTROLS ARE GONE */}
+          <div style={{ flex: 1, position: 'relative', border: '2px solid #334155', borderRadius: '8px', backgroundColor: '#020617', boxShadow: '0 0 40px rgba(0, 0, 0, 0.9)', overflow: 'hidden' }}>
+            {/* Real CRT Scanline Filter */}
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06))', backgroundSize: '100% 4px, 3px 100%', pointerEvents: 'none', zIndex: 10 }}></div>
             <canvas ref={canvasRef} width={1000} height={850} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
         </div>
@@ -422,7 +428,7 @@ export default function App() {
         {/* RIGHT PANEL - ENEMY TELEMETRY DASHBOARD */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <div style={{ backgroundColor: 'rgba(127, 29, 29, 0.1)', padding: '12px', border: '1px solid #7f1d1d', borderRadius: '6px' }}>
-            <h2 style={{ color: '#ef4444', fontSize: '12px', marginTop: 0, borderBottom: '1px solid #7f1d1d', paddingBottom: '6px' }}>⚠️ THREAT {radarMode === 'AIR' ? 'RADAR' : 'SONAR'}</h2>
+            <h2 style={{ color: '#ef4444', fontSize: '12px', marginTop: 0, borderBottom: '1px solid #7f1d1d', paddingBottom: '6px' }}>⚠️ THREAT RADAR</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px', fontSize: '11px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#fca5a5' }}>Threat:</span> <span style={{ color: activeThreats > 0 ? '#ef4444' : '#4ade80', fontWeight: 'bold' }}>{activeThreats > 0 ? 'ACTIVE' : 'CLEAR'}</span></div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#fca5a5' }}>Tracking:</span> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{activeThreats} / 3</span></div>
@@ -432,7 +438,7 @@ export default function App() {
                 {enemies.map(e => {
                   const dist = Math.hypot(e.x - basePos.x, e.y - basePos.y);
                   const isInside = dist <= radarRadius;
-                  const status = e.health <= 0 ? 'DESTROYED' : (isInside ? 'LOCKED' : 'APPROACHING');
+                  const status = e.health <= 0 ? 'DESTROYED' : (isInside ? 'LOCKED' : 'BOGEY');
                   const col = e.health <= 0 ? '#78350f' : (isInside ? '#f87171' : '#facc15');
                   
                   return (
@@ -457,17 +463,12 @@ export default function App() {
                 <div style={{ color: '#94a3b8', fontSize: '10px' }}>HIT PROBABILITY</div>
                 <div style={{ fontSize: '20px', color: hitProbability > 70 ? '#4ade80' : hitProbability > 40 ? '#facc15' : '#ef4444', fontWeight: 'bold' }}>{hitProbability}%</div>
               </div>
-              <div style={{ backgroundColor: '#1e293b', padding: '10px', borderRadius: '4px', borderLeft: '3px solid #ef4444' }}>
-                <div style={{ color: '#94a3b8', fontSize: '10px' }}>DETECTED STRATEGY</div>
-                <div style={{ fontSize: '10px', color: '#fca5a5', fontWeight: 'bold', marginTop: '4px' }}>{enemyStrategy}</div>
-              </div>
               <div style={{ backgroundColor: '#1e293b', padding: '10px', borderRadius: '4px', borderLeft: '3px solid #38bdf8' }}>
                 <div style={{ color: '#94a3b8', fontSize: '10px' }}>HQ INTEGRITY</div>
                 <div style={{ fontSize: '18px', color: baseHealth > 30 ? '#38bdf8' : '#ef4444', fontWeight: 'bold' }}>{Math.floor(baseHealth)}%</div>
               </div>
             </div>
           </div>
-
         </div>
       </div>
     </div>
