@@ -89,7 +89,8 @@ export default function App() {
 
         if (isAIActive && baseHealth > 0) {
           const cx = basePos.x, cy = basePos.y;
-          const sweepAngle = (Date.now() / (radarMode === 'AIR' ? 1200 : 1600)) % (Math.PI * 2);
+          const sweepSpeed = radarMode === 'AIR' ? 1200 : 2500; // Sonar is much slower
+          const sweepAngle = (Date.now() / sweepSpeed) % (Math.PI * 2);
 
           setEnemies(prevEnemies => {
             let activeEnemies = prevEnemies.map(enemy => {
@@ -183,28 +184,29 @@ export default function App() {
       if (canvas) {
         const ctx = canvas.getContext('2d');
         const cx = basePos.x, cy = basePos.y; 
-        const sweepAngle = (Date.now() / (radarMode === 'AIR' ? 1200 : 1600)) % (Math.PI * 2);
-
         const isNavy = radarMode === 'NAVY';
-        const radarBgColor = isNavy ? '#021024' : '#011c09'; // Darker, more realistic BG
-        const radarLineColor = isNavy ? 'rgba(56, 189, 248, 0.3)' : 'rgba(34, 197, 94, 0.3)';
-        const radarSweepColorSolid = isNavy ? 'rgba(56, 189, 248, 0.8)' : 'rgba(74, 222, 128, 0.8)';
+        
+        const sweepSpeed = isNavy ? 2500 : 1200;
+        const sweepAngle = (Date.now() / sweepSpeed) % (Math.PI * 2);
+
+        // STYLING DIFFERENCES: AIR vs NAVY
+        const radarBgColor = isNavy ? '#010a17' : '#011c09'; 
+        const radarLineColor = isNavy ? 'rgba(14, 165, 233, 0.3)' : 'rgba(34, 197, 94, 0.3)'; // Navy Cyan vs Air Green
+        const radarSweepColorSolid = isNavy ? 'rgba(56, 189, 248, 0.7)' : 'rgba(74, 222, 128, 0.8)';
         const textColor = isNavy ? '#38bdf8' : '#4ade80';
 
         ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Advanced Bezel with Degree Markers
+        // Bezel
         ctx.beginPath(); ctx.arc(cx, cy, radarRadius + 25, 0, Math.PI * 2);
         ctx.fillStyle = '#0f172a'; ctx.fill(); 
         ctx.strokeStyle = '#334155'; ctx.lineWidth = 2; ctx.stroke();
         
         ctx.font = '10px "Courier New", monospace';
-        ctx.fillStyle = '#94a3b8';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#94a3b8'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         
-        // Draw Degrees around Bezel
-        for(let i=0; i<360; i+=15) {
+        // Degree Markers
+        for(let i=0; i<360; i+= (isNavy ? 45 : 15)) {
           const rad = (i - 90) * (Math.PI / 180);
           const isMajor = i % 90 === 0;
           const outerR = radarRadius + (isMajor ? 20 : 12);
@@ -217,14 +219,14 @@ export default function App() {
           ctx.lineWidth = isMajor ? 2 : 1;
           ctx.stroke();
 
-          if(i % 30 === 0) {
+          if(i % (isNavy ? 45 : 30) === 0) {
              let text = i.toString().padStart(3, '0');
              if(i===0) text = 'N 000'; if(i===90) text = 'E 090'; if(i===180) text = 'S 180'; if(i===270) text = 'W 270';
              ctx.fillStyle = isMajor ? '#ffffff' : '#94a3b8';
              ctx.fillText(text, cx + Math.cos(rad) * outerR, cy + Math.sin(rad) * outerR);
           }
         }
-        ctx.textAlign = 'left'; // Reset
+        ctx.textAlign = 'left';
 
         // RADAR MASK
         ctx.save();
@@ -232,41 +234,53 @@ export default function App() {
         ctx.clip();
         ctx.fillStyle = radarBgColor; ctx.fill();
 
-        // Advanced Grid (Azimuth Lines)
+        // Grid Design (Air vs Navy)
         ctx.strokeStyle = radarLineColor; ctx.lineWidth = 1;
-        for (let i=0; i<360; i+=30) {
-          const rad = i * (Math.PI / 180);
-          ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(rad) * radarRadius, cy + Math.sin(rad) * radarRadius); ctx.stroke();
+        if (!isNavy) {
+          // Air: Dense Azimuth Lines
+          for (let i=0; i<360; i+=30) {
+            const rad = i * (Math.PI / 180);
+            ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(rad) * radarRadius, cy + Math.sin(rad) * radarRadius); ctx.stroke();
+          }
+        } else {
+          // Navy: Simple Crosshair
+          ctx.beginPath(); ctx.moveTo(cx, cy - radarRadius); ctx.lineTo(cx, cy + radarRadius); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(cx - radarRadius, cy); ctx.lineTo(cx + radarRadius, cy); ctx.stroke();
         }
         
         // Concentric Distance Rings
         for (let r = 60; r <= radarRadius; r += 60) {
           ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
           ctx.fillStyle = radarLineColor;
-          ctx.fillText(`${r/2}NM`, cx + 2, cy - r - 2);
+          ctx.fillText(`${r/2}${isNavy ? 'Yds' : 'NM'}`, cx + 2, cy - r - 2);
         }
 
-        // Realistic Conic Sweep Effect (Supported in modern browsers)
+        // SWEEP & PING EFFECTS
+        if (isNavy && isAIActive) {
+          // NAVY: Expanding Sonar Ping Ring
+          const pingProgress = (Date.now() % 2500) / 2500;
+          const pingRadius = pingProgress * radarRadius;
+          ctx.beginPath();
+          ctx.arc(cx, cy, pingRadius, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(56, 189, 248, ${1 - pingProgress})`; // Fades out as it expands
+          ctx.lineWidth = 4;
+          ctx.stroke();
+        }
+
+        // Standard Sweep Gradient
         if (ctx.createConicGradient) {
           const gradient = ctx.createConicGradient(sweepAngle - Math.PI/2, cx, cy);
-          gradient.addColorStop(0, radarSweepColorSolid); // Head
-          gradient.addColorStop(0.1, isNavy ? 'rgba(56,189,248,0.2)' : 'rgba(34,197,94,0.2)'); // Tail
+          gradient.addColorStop(0, radarSweepColorSolid); 
+          gradient.addColorStop(isNavy ? 0.05 : 0.1, isNavy ? 'rgba(56,189,248,0.1)' : 'rgba(34,197,94,0.2)'); 
           gradient.addColorStop(1, 'rgba(0,0,0,0)');
           ctx.fillStyle = gradient;
           ctx.beginPath(); ctx.arc(cx, cy, radarRadius, 0, Math.PI*2); ctx.fill();
-        } else {
-          // Fallback if no conic gradient
-          ctx.save(); ctx.translate(cx, cy); ctx.rotate(sweepAngle);
-          ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, radarRadius, 0, 0.25); ctx.lineTo(0, 0);
-          const gradient = ctx.createLinearGradient(0, 0, radarRadius, 0);
-          gradient.addColorStop(0, radarSweepColorSolid); gradient.addColorStop(1, 'rgba(0,0,0,0)');
-          ctx.fillStyle = gradient; ctx.fill(); ctx.restore();
         }
         
-        // Radar Sweep Leading Line
+        // Leading Line
         ctx.beginPath(); ctx.moveTo(cx, cy); 
         ctx.lineTo(cx + Math.cos(sweepAngle)*radarRadius, cy + Math.sin(sweepAngle)*radarRadius);
-        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.strokeStyle = isNavy ? '#7dd3fc' : '#ffffff'; ctx.lineWidth = isNavy ? 1 : 2; ctx.stroke();
 
         ctx.restore(); // END MASK
 
@@ -274,13 +288,11 @@ export default function App() {
           ctx.fillStyle = color; ctx.font = `${bold ? 'bold ' : ''}10px "Courier New", monospace`; ctx.fillText(text, x, y); 
         };
 
-        // HQ / Center Base
-        ctx.beginPath(); ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 10, cy); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy + 10); ctx.stroke();
+        // Base
         ctx.beginPath(); ctx.rect(cx - 15, cy - 10, 30, 20);
-        ctx.fillStyle = `rgba(56, 189, 248, 0.2)`; ctx.fill();
-        ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1; ctx.stroke();
-        drawTacticalText(`HQ-SYS [${Math.floor(baseHealth)}%]`, cx + 20, cy + 5, '#38bdf8', true);
+        ctx.fillStyle = isNavy ? 'rgba(56, 189, 248, 0.15)' : 'rgba(56, 189, 248, 0.2)'; ctx.fill();
+        ctx.strokeStyle = isNavy ? '#0ea5e9' : '#38bdf8'; ctx.lineWidth = 1; ctx.stroke();
+        drawTacticalText(`HQ-SYS [${Math.floor(baseHealth)}%]`, cx + 20, cy + 5, isNavy ? '#0ea5e9' : '#38bdf8', true);
 
         // Defenses
         units.forEach(u => {
@@ -292,24 +304,24 @@ export default function App() {
           drawTacticalText(isNavy ? 'CRU' : 'TNK', u.x - 10, u.y + 14, textColor);
         });
 
-        // Own Jet
+        // Own Ship
         ctx.beginPath(); ctx.arc(ownShip.x, ownShip.y, 8, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(96, 165, 250, 0.4)`; ctx.fill();
         ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2; ctx.stroke();
         drawTacticalText(isNavy ? 'SUB-01' : 'BLU-01', ownShip.x + 10, ownShip.y - 5, '#60a5fa', true);
 
-        // ADVANCED ENEMY RENDERING
+        // ENEMIES
         enemies.forEach(enemy => {
           if (enemy.health > 0) {
             const distToCenter = Math.hypot(enemy.x - cx, enemy.y - cy);
             const isInsideRadar = distToCenter <= radarRadius;
             
-            // Calculate Bearing (0-360 degrees)
             let bearing = (Math.atan2(enemy.y - cy, enemy.x - cx) * 180 / Math.PI) + 90;
             if (bearing < 0) bearing += 360;
             
-            const jetColor = isInsideRadar ? '#ef4444' : '#eab308'; 
-            const glowColor = isInsideRadar ? '#dc2626' : '#ca8a04';
+            // Colors: Air uses Red, Navy uses bright Orange/Yellow for Sonar returns
+            const jetColor = isInsideRadar ? (isNavy ? '#f59e0b' : '#ef4444') : '#64748b'; 
+            const glowColor = isInsideRadar ? (isNavy ? '#d97706' : '#dc2626') : '#475569';
             
             let tx = basePos.x, ty = basePos.y;
             if (flares.length > 0) { tx = flares[0].x; ty = flares[0].y; }
@@ -318,27 +330,34 @@ export default function App() {
             ctx.save();
             ctx.translate(enemy.x, enemy.y);
             
-            // Draw Advanced Target Bracket [ ]
+            // TARGET BRACKETS (Air = Square, Navy = Dashed Circle)
             if(isInsideRadar) {
-              ctx.beginPath();
-              const bSize = 18;
-              // Top Left
-              ctx.moveTo(-bSize, -bSize/2); ctx.lineTo(-bSize, -bSize); ctx.lineTo(-bSize/2, -bSize);
-              // Top Right
-              ctx.moveTo(bSize/2, -bSize); ctx.lineTo(bSize, -bSize); ctx.lineTo(bSize, -bSize/2);
-              // Bottom Right
-              ctx.moveTo(bSize, bSize/2); ctx.lineTo(bSize, bSize); ctx.lineTo(bSize/2, bSize);
-              // Bottom Left
-              ctx.moveTo(-bSize/2, bSize); ctx.lineTo(-bSize, bSize); ctx.lineTo(-bSize, bSize/2);
-              ctx.strokeStyle = 'rgba(239, 68, 68, 0.7)'; ctx.lineWidth = 2; ctx.stroke();
+              if (isNavy) {
+                ctx.beginPath();
+                ctx.arc(0, 0, 20, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(245, 158, 11, 0.8)'; // Orange Sonar lock
+                ctx.setLineDash([4, 6]);
+                ctx.lineWidth = 1.5; ctx.stroke();
+                ctx.setLineDash([]);
+              } else {
+                ctx.beginPath();
+                const bSize = 18;
+                ctx.moveTo(-bSize, -bSize/2); ctx.lineTo(-bSize, -bSize); ctx.lineTo(-bSize/2, -bSize); // TL
+                ctx.moveTo(bSize/2, -bSize); ctx.lineTo(bSize, -bSize); ctx.lineTo(bSize, -bSize/2);    // TR
+                ctx.moveTo(bSize, bSize/2); ctx.lineTo(bSize, bSize); ctx.lineTo(bSize/2, bSize);       // BR
+                ctx.moveTo(-bSize/2, bSize); ctx.lineTo(-bSize, bSize); ctx.lineTo(-bSize, bSize/2);    // BL
+                ctx.strokeStyle = 'rgba(239, 68, 68, 0.7)'; ctx.lineWidth = 2; ctx.stroke();
+              }
             }
 
-            // Draw Jet/Sub Shape
+            // Draw Asset Shape
             ctx.rotate(angle);
             ctx.beginPath();
             if (isNavy) {
+              // Submarine shape
               ctx.moveTo(0, -12); ctx.lineTo(4, -6); ctx.lineTo(4, 8); ctx.lineTo(0, 12); ctx.lineTo(-4, 8); ctx.lineTo(-4, -6);
             } else {
+              // Jet shape
               ctx.moveTo(0, -14); ctx.lineTo(4, -4); ctx.lineTo(14, 2); ctx.lineTo(4, 6); ctx.lineTo(2, 10); ctx.lineTo(8, 14); ctx.lineTo(-8, 14); ctx.lineTo(-2, 10); ctx.lineTo(-4, 6); ctx.lineTo(-14, 2); ctx.lineTo(-4, -4);
             }
             ctx.closePath();
@@ -346,21 +365,23 @@ export default function App() {
             ctx.lineWidth = 1; ctx.strokeStyle = isInsideRadar ? '#ffffff' : '#000000'; ctx.stroke();
             ctx.restore();
 
-            // ADVANCED HUD TEXT
+            // HUD TEXT
             if (isInsideRadar) {
-              // Line to text block
+              const lineColor = isNavy ? 'rgba(245, 158, 11, 0.5)' : 'rgba(239, 68, 68, 0.5)';
+              const txtColor = isNavy ? '#f59e0b' : '#ff0000';
+              const subTxtColor = isNavy ? '#fcd34d' : '#fca5a5';
+
               ctx.beginPath(); ctx.moveTo(enemy.x + 18, enemy.y - 18); 
-              ctx.lineTo(enemy.x + 25, enemy.y - 25); 
-              ctx.lineTo(enemy.x + 45, enemy.y - 25); 
-              ctx.strokeStyle = 'rgba(239, 68, 68, 0.5)'; ctx.lineWidth = 1; ctx.stroke();
+              ctx.lineTo(enemy.x + 25, enemy.y - 25); ctx.lineTo(enemy.x + 45, enemy.y - 25); 
+              ctx.strokeStyle = lineColor; ctx.lineWidth = 1; ctx.stroke();
               
-              drawTacticalText(`${enemy.id}`, enemy.x + 50, enemy.y - 30, '#ff0000', true);
-              drawTacticalText(`BRG: ${Math.floor(bearing)}°`, enemy.x + 50, enemy.y - 18, '#fca5a5');
-              drawTacticalText(`DST: ${Math.floor(distToCenter/2)}NM`, enemy.x + 50, enemy.y - 8, '#fca5a5');
-              drawTacticalText(`${isNavy?'DPT':'ALT'}: ${enemy.alt}`, enemy.x + 50, enemy.y + 2, '#fca5a5');
-              drawTacticalText(`SPD: M${enemy.speed.toFixed(1)}`, enemy.x + 50, enemy.y + 12, '#facc15');
+              drawTacticalText(`${enemy.id}`, enemy.x + 50, enemy.y - 30, txtColor, true);
+              drawTacticalText(`BRG: ${Math.floor(bearing)}°`, enemy.x + 50, enemy.y - 18, subTxtColor);
+              drawTacticalText(`DST: ${Math.floor(distToCenter/2)}${isNavy ? 'Yds' : 'NM'}`, enemy.x + 50, enemy.y - 8, subTxtColor);
+              drawTacticalText(`${isNavy?'DPT':'ALT'}: ${enemy.alt}`, enemy.x + 50, enemy.y + 2, subTxtColor);
+              drawTacticalText(`KTS: ${Math.floor(enemy.speed * 200)}`, enemy.x + 50, enemy.y + 12, subTxtColor);
             } else {
-              drawTacticalText(`UFO M${enemy.speed.toFixed(1)}`, enemy.x + 15, enemy.y, '#facc15');
+              drawTacticalText(isNavy ? `CONTACT` : `UFO M${enemy.speed.toFixed(1)}`, enemy.x + 15, enemy.y, '#94a3b8');
             }
           }
         });
@@ -419,7 +440,6 @@ export default function App() {
         {/* CENTER WIDESCREEN RADAR */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', height: '100%' }}>
           <div style={{ flex: 1, position: 'relative', border: '2px solid #334155', borderRadius: '8px', backgroundColor: '#020617', boxShadow: '0 0 40px rgba(0, 0, 0, 0.9)', overflow: 'hidden' }}>
-            {/* Real CRT Scanline Filter */}
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06))', backgroundSize: '100% 4px, 3px 100%', pointerEvents: 'none', zIndex: 10 }}></div>
             <canvas ref={canvasRef} width={1000} height={850} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
@@ -428,7 +448,7 @@ export default function App() {
         {/* RIGHT PANEL - ENEMY TELEMETRY DASHBOARD */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <div style={{ backgroundColor: 'rgba(127, 29, 29, 0.1)', padding: '12px', border: '1px solid #7f1d1d', borderRadius: '6px' }}>
-            <h2 style={{ color: '#ef4444', fontSize: '12px', marginTop: 0, borderBottom: '1px solid #7f1d1d', paddingBottom: '6px' }}>⚠️ THREAT RADAR</h2>
+            <h2 style={{ color: '#ef4444', fontSize: '12px', marginTop: 0, borderBottom: '1px solid #7f1d1d', paddingBottom: '6px' }}>⚠️ THREAT {radarMode === 'AIR' ? 'RADAR' : 'SONAR'}</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px', fontSize: '11px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#fca5a5' }}>Threat:</span> <span style={{ color: activeThreats > 0 ? '#ef4444' : '#4ade80', fontWeight: 'bold' }}>{activeThreats > 0 ? 'ACTIVE' : 'CLEAR'}</span></div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#fca5a5' }}>Tracking:</span> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{activeThreats} / 3</span></div>
@@ -438,16 +458,13 @@ export default function App() {
                 {enemies.map(e => {
                   const dist = Math.hypot(e.x - basePos.x, e.y - basePos.y);
                   const isInside = dist <= radarRadius;
-                  const status = e.health <= 0 ? 'DESTROYED' : (isInside ? 'LOCKED' : 'BOGEY');
+                  const status = e.health <= 0 ? 'DESTROYED' : (isInside ? 'LOCKED' : 'APPROACHING');
                   const col = e.health <= 0 ? '#78350f' : (isInside ? '#f87171' : '#facc15');
                   
                   return (
                     <div key={e.id} style={{ marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px dashed #7f1d1d' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: col, fontWeight: 'bold' }}>
                         <span>{e.id} [{e.type}]</span> <span>{status}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: '#fca5a5', marginTop: '4px' }}>
-                        <span>Spd: MACH {e.speed.toFixed(1)}</span> <span>HP: {e.health}%</span>
                       </div>
                     </div>
                   );
