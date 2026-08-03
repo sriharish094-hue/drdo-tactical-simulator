@@ -7,19 +7,17 @@ export default function App() {
   const [score, setScore] = useState(0);
   const [baseHealth, setBaseHealth] = useState(100);
   
-  // MAXIMIZED RADAR SETTINGS (Canvas is now 1000x750)
-  const basePos = { x: 500, y: 375 }; // Exact center
-  const radarRadius = 350; // Massively increased radius!
+  const basePos = { x: 500, y: 375 }; 
+  const radarRadius = 350; 
   const [ownShip, setOwnShip] = useState({ x: 500, y: 430 });
 
-  // Enemies spawn far outside the new huge radar
+  // ENEMY TELEMETRY UPDATED: Added 'type' and varied 'speed'
   const [enemies, setEnemies] = useState([
-    { id: 'TRK-01', x: 950, y: 50, health: 100, speed: 1.2 },
-    { id: 'TRK-02', x: 50, y: 650, health: 100, speed: 1.0 },
-    { id: 'TRK-03', x: 900, y: 700, health: 100, speed: 1.5 }
+    { id: 'TRK-01', type: 'FIGHTER JET', x: 950, y: 50, health: 100, speed: 1.8 },
+    { id: 'DRN-02', type: 'STEALTH DRONE', x: 50, y: 650, health: 100, speed: 1.1 },
+    { id: 'BMB-03', type: 'HEAVY BOMBER', x: 900, y: 700, health: 100, speed: 0.7 }
   ]);
 
-  // Defenses positioned relative to the new center
   const tanks = [
     { id: 'TANK-1', x: 440, y: 420 },
     { id: 'TANK-2', x: 560, y: 420 }
@@ -113,7 +111,7 @@ export default function App() {
                   else if (targetDist < 250) setEnemyStrategy('TACTICAL ENGAGEMENT ZONE');
                   else setEnemyStrategy('TARGET DETECTED ON RADAR');
 
-                  if (targetDist < 120) setAdvisorText(`⚠️ ALARM: ${target.id} BREACHED INNER DEFENSE! ENGAGE JET!`);
+                  if (targetDist < 120) setAdvisorText(`⚠️ ALARM: ${target.id} (${target.type}) BREACHED INNER DEFENSE!`);
                   else setAdvisorText(`🚨 RADAR ALERT: BOGIES ENTERED AIRSPACE. SAM ACTIVE.`);
 
                   let objAngle = Math.atan2(target.y - cy, target.x - cx);
@@ -185,14 +183,11 @@ export default function App() {
         ctx.beginPath(); ctx.arc(cx, cy, radarRadius + 5, 0, Math.PI * 2);
         ctx.fillStyle = '#0f172a'; ctx.fill();
 
-        // RADAR MASK
         ctx.save();
         ctx.beginPath(); ctx.arc(cx, cy, radarRadius, 0, Math.PI * 2);
         ctx.clip();
-
         ctx.fillStyle = '#022c11'; ctx.fill();
 
-        // Radar Grid
         ctx.strokeStyle = 'rgba(34, 197, 94, 0.4)'; ctx.lineWidth = 1;
         for (let r = 50; r <= radarRadius; r += 50) {
           ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
@@ -202,7 +197,6 @@ export default function App() {
         ctx.beginPath(); ctx.moveTo(cx - radarRadius*0.7, cy - radarRadius*0.7); ctx.lineTo(cx + radarRadius*0.7, cy + radarRadius*0.7); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cx + radarRadius*0.7, cy - radarRadius*0.7); ctx.lineTo(cx - radarRadius*0.7, cy + radarRadius*0.7); ctx.stroke();
 
-        // Green Sweep
         ctx.save(); ctx.translate(cx, cy); ctx.rotate(sweepAngle);
         ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, radarRadius, 0, 0.25); ctx.lineTo(0, 0);
         const gradient = ctx.createLinearGradient(0, 0, radarRadius, 0);
@@ -211,7 +205,7 @@ export default function App() {
         ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(radarRadius, 0);
         ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
 
-        ctx.restore(); // END MASK
+        ctx.restore();
 
         const drawTacticalText = (text, x, y, color) => { ctx.fillStyle = color; ctx.font = '10px "Courier New", monospace'; ctx.fillText(text, x, y); };
 
@@ -243,36 +237,34 @@ export default function App() {
         ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2; ctx.stroke();
         drawTacticalText('BLU-01', ownShip.x + 12, ownShip.y - 5, '#60a5fa');
 
-        // NEW ENEMY LOGIC (Yellow Jet -> Red Jet)
+        // ENEMY DRAWING WITH NEW DATA
         enemies.forEach(enemy => {
           if (enemy.health > 0) {
             const distToCenter = Math.hypot(enemy.x - cx, enemy.y - cy);
             const isInsideRadar = distToCenter <= radarRadius;
             
-            const jetColor = isInsideRadar ? '#ef4444' : '#eab308'; // Red if inside, Yellow if outside
+            const jetColor = isInsideRadar ? '#ef4444' : '#eab308'; 
             const glowColor = isInsideRadar ? '#dc2626' : '#ca8a04';
 
-            // Calculate Angle pointing towards target (HQ / flares)
             let tx = basePos.x, ty = basePos.y;
             if (flares.length > 0) { tx = flares[0].x; ty = flares[0].y; }
-            const angle = Math.atan2(ty - enemy.y, tx - enemy.x) + (Math.PI / 2); // Point nose towards movement
+            const angle = Math.atan2(ty - enemy.y, tx - enemy.x) + (Math.PI / 2);
 
             ctx.save();
             ctx.translate(enemy.x, enemy.y);
             ctx.rotate(angle);
 
-            // Detailed Fighter Jet Drawing Path
             ctx.beginPath();
-            ctx.moveTo(0, -16); // Nose
+            ctx.moveTo(0, -16); 
             ctx.lineTo(4, -4);
-            ctx.lineTo(16, 2); // Right wing tip
+            ctx.lineTo(16, 2); 
             ctx.lineTo(4, 6);
             ctx.lineTo(2, 12);
-            ctx.lineTo(8, 16); // Right tail
-            ctx.lineTo(-8, 16); // Left tail
+            ctx.lineTo(8, 16); 
+            ctx.lineTo(-8, 16); 
             ctx.lineTo(-2, 12);
             ctx.lineTo(-4, 6);
-            ctx.lineTo(-16, 2); // Left wing tip
+            ctx.lineTo(-16, 2); 
             ctx.lineTo(-4, -4);
             ctx.closePath();
 
@@ -286,16 +278,18 @@ export default function App() {
             ctx.stroke();
             ctx.restore();
 
-            // UI Tracking Lines
+            // DISPLAY TELEMETRY ON RADAR
             if (isInsideRadar) {
               ctx.beginPath(); ctx.moveTo(enemy.x + 12, enemy.y - 12); 
               ctx.lineTo(enemy.x + 20, enemy.y - 20); 
               ctx.lineTo(enemy.x + 40, enemy.y - 20); 
               ctx.strokeStyle = '#ff0000'; ctx.lineWidth = 1.5; ctx.stroke();
-              drawTacticalText(`TARGET`, enemy.x + 43, enemy.y - 17, '#ff0000');
-              drawTacticalText(`[${enemy.health}%]`, enemy.x + 43, enemy.y - 7, '#ff0000');
+              
+              drawTacticalText(`${enemy.id} [${enemy.type}]`, enemy.x + 43, enemy.y - 22, '#ff0000');
+              drawTacticalText(`SPD: MACH ${enemy.speed.toFixed(1)}`, enemy.x + 43, enemy.y - 10, '#ff0000');
+              drawTacticalText(`HP:  ${enemy.health}%`, enemy.x + 43, enemy.y + 2, '#ff0000');
             } else {
-              drawTacticalText('BOGEY', enemy.x + 18, enemy.y, '#facc15');
+              drawTacticalText(`BOGEY [MACH ${enemy.speed.toFixed(1)}]`, enemy.x + 18, enemy.y, '#facc15');
             }
           }
         });
@@ -322,7 +316,11 @@ export default function App() {
 
   const handleReset = () => {
     setOwnShip({ x: 500, y: 430 });
-    setEnemies([{ id: 'TRK-01', x: 950, y: 50, health: 100, speed: 1.2 }, { id: 'TRK-02', x: 50, y: 650, health: 100, speed: 1.0 }, { id: 'TRK-03', x: 900, y: 700, health: 100, speed: 1.5 }]);
+    setEnemies([
+      { id: 'TRK-01', type: 'FIGHTER JET', x: 950, y: 50, health: 100, speed: 1.8 },
+      { id: 'DRN-02', type: 'STEALTH DRONE', x: 50, y: 650, health: 100, speed: 1.1 },
+      { id: 'BMB-03', type: 'HEAVY BOMBER', x: 900, y: 700, health: 100, speed: 0.7 }
+    ]);
     setMissiles([]); setFlares([]); setExplosions([]); setBaseHealth(100); setScore(0);
   };
 
@@ -338,7 +336,7 @@ export default function App() {
         <div style={{ color: '#4ade80', fontSize: '12px', border: '1px solid #4ade80', padding: '4px 8px', borderRadius: '4px', backgroundColor: 'rgba(74, 222, 128, 0.1)' }}>STATUS: ONLINE</div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr 220px', gap: '20px', flex: 1, alignItems: 'stretch' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr 250px', gap: '20px', flex: 1, alignItems: 'stretch' }}>
         
         {/* LEFT PANEL */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
@@ -370,7 +368,6 @@ export default function App() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', height: '100%' }}>
           <div style={{ flex: 1, position: 'relative', border: '3px solid #1e293b', borderRadius: '8px', backgroundColor: '#020617', boxShadow: '0 0 30px rgba(0, 0, 0, 0.8)', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px)', pointerEvents: 'none', zIndex: 10 }}></div>
-            {/* UPDATED CANVAS DIMENSIONS */}
             <canvas ref={canvasRef} width={1000} height={750} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
 
@@ -388,7 +385,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* RIGHT PANEL */}
+        {/* RIGHT PANEL - ENEMY TELEMETRY DASHBOARD */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <div style={{ backgroundColor: 'rgba(127, 29, 29, 0.1)', padding: '12px', border: '1px solid #7f1d1d', borderRadius: '6px' }}>
             <h2 style={{ color: '#ef4444', fontSize: '12px', marginTop: 0, borderBottom: '1px solid #7f1d1d', paddingBottom: '6px' }}>⚠️ THREAT RADAR</h2>
@@ -396,15 +393,23 @@ export default function App() {
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#fca5a5' }}>Threat:</span> <span style={{ color: activeThreats > 0 ? '#ef4444' : '#4ade80', fontWeight: 'bold' }}>{activeThreats > 0 ? 'ACTIVE' : 'CLEAR'}</span></div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#fca5a5' }}>In Radar:</span> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{activeThreats} / 3</span></div>
               
-              <div style={{ backgroundColor: '#451a1a', padding: '8px', borderRadius: '4px', marginTop: '5px' }}>
-                <div style={{ color: '#fca5a5', fontSize: '10px', fontWeight: 'bold', marginBottom: '6px' }}>TARGET STATUS</div>
+              {/* NEW DETAILED TARGET TELEMETRY UI */}
+              <div style={{ backgroundColor: '#451a1a', padding: '10px', borderRadius: '4px', marginTop: '5px' }}>
+                <div style={{ color: '#fca5a5', fontSize: '10px', fontWeight: 'bold', marginBottom: '8px' }}>TARGET TELEMETRY</div>
                 {enemies.map(e => {
                   const dist = Math.hypot(e.x - basePos.x, e.y - basePos.y);
-                  const status = e.health <= 0 ? 'DESTROYED' : (dist <= radarRadius ? `${e.health}% (LOCKED)` : 'APPROACHING');
-                  const col = e.health <= 0 ? '#78350f' : (dist <= radarRadius ? '#f87171' : '#facc15');
+                  const isInside = dist <= radarRadius;
+                  const status = e.health <= 0 ? 'DESTROYED' : (isInside ? 'LOCKED' : 'APPROACHING');
+                  const col = e.health <= 0 ? '#78350f' : (isInside ? '#f87171' : '#facc15');
+                  
                   return (
-                    <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: col, marginTop: '4px' }}>
-                      <span>{e.id}:</span> <span>{status}</span>
+                    <div key={e.id} style={{ marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px dashed #7f1d1d' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: col, fontWeight: 'bold' }}>
+                        <span>{e.id} [{e.type}]</span> <span>{status}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: '#fca5a5', marginTop: '4px' }}>
+                        <span>Speed: MACH {e.speed.toFixed(1)}</span> <span>HP: {e.health}%</span>
+                      </div>
                     </div>
                   );
                 })}
