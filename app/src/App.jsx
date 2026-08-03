@@ -28,6 +28,9 @@ export default function App() {
   const lastDefFire = useRef({ 'DEF-1': 0, 'DEF-2': 0 });
   const movementRef = useRef({ dx: 0, dy: 0 });
 
+  // TOP SECRET: K.A.L.I WEAPON SYSTEM REF
+  const kaliRef = useRef({ active: false, radius: 0 });
+
   const [advisorText, setAdvisorText] = useState('SYSTEM READY. AWAITING COMMANDER DIRECTIVE.');
   const [hitProbability, setHitProbability] = useState(0);
   const [enemyStrategy, setEnemyStrategy] = useState('SCANNING BORDERS...');
@@ -52,8 +55,17 @@ export default function App() {
   const fireMissile = () => { if (baseHealth > 0) setMissiles(prev => [...prev, { x: ownShip.x, y: ownShip.y, speed: 12, type: 'MANUAL', targetId: null }]); };
   const deployFlare = () => { if (baseHealth > 0) setFlares(prev => [...prev, { x: ownShip.x, y: ownShip.y, life: 100 }]); };
 
+  // INITIATE CLASSIFIED WEAPON
+  const triggerKALI = () => {
+    if (baseHealth > 0 && !kaliRef.current.active) {
+      kaliRef.current = { active: true, radius: 10 };
+      setAdvisorText('☢️ CLASSIFIED: PROJECT K.A.L.I ACTIVATED. ORBITAL EMP DISCHARGING!');
+    }
+  };
+
   const handleReset = (newMode = radarMode) => {
     setOwnShip({ x: 500, y: 460 });
+    kaliRef.current.active = false;
     if (newMode === 'AIR') {
       setEnemies([
         { id: 'TRK-01', type: 'FIGHTER JET', x: 950, y: 50, health: 100, speed: 1.8, alt: 24000 },
@@ -87,14 +99,32 @@ export default function App() {
         lastTime = time;
         setOwnShip(p => ({ x: Math.max(20, Math.min(980, p.x + movementRef.current.dx)), y: Math.max(20, Math.min(780, p.y + movementRef.current.dy)) }));
 
+        const cx = basePos.x, cy = basePos.y;
+
+        // K.A.L.I WEAPON LOGIC
+        if (kaliRef.current.active) {
+          kaliRef.current.radius += 45; // Extremely fast expansion
+          if (kaliRef.current.radius > 1200) {
+            kaliRef.current.active = false; // Reset after it clears the screen
+          }
+        }
+
         if (isAIActive && baseHealth > 0) {
-          const cx = basePos.x, cy = basePos.y;
-          const sweepSpeed = radarMode === 'AIR' ? 1200 : 2500; // Sonar is much slower
+          const sweepSpeed = radarMode === 'AIR' ? 1200 : 2500;
           const sweepAngle = (Date.now() / sweepSpeed) % (Math.PI * 2);
 
           setEnemies(prevEnemies => {
             let activeEnemies = prevEnemies.map(enemy => {
               if (enemy.health <= 0) return enemy;
+
+              // IF KALI WAVE HITS THEM -> INSTANT DEATH
+              const distToCenter = Math.hypot(enemy.x - cx, enemy.y - cy);
+              if (kaliRef.current.active && distToCenter <= kaliRef.current.radius) {
+                setExplosions(ex => [...ex, { x: enemy.x, y: enemy.y, life: 25 }]); // Big explosion
+                setScore(s => s + 500);
+                return { ...enemy, health: 0, speed: 0 }; // Engine dead
+              }
+
               let tx = basePos.x, ty = basePos.y;
               if (flares.length > 0) { tx = flares[0].x + Math.sin(Date.now() / 100) * 50; ty = flares[0].y + Math.cos(Date.now() / 100) * 50; }
               const edx = tx - enemy.x, edy = ty - enemy.y;
@@ -112,7 +142,7 @@ export default function App() {
             
             setMissiles(prevMissiles => {
               let newMissiles = [...prevMissiles];
-              if (aliveEnemies.length > 0) {
+              if (aliveEnemies.length > 0 && !kaliRef.current.active) { // Don't fire normal missiles if KALI is active
                 let visibleEnemies = aliveEnemies.filter(e => Math.hypot(e.x - cx, e.y - cy) <= radarRadius);
                 if (visibleEnemies.length > 0) {
                   let closest = visibleEnemies.reduce((min, e) => {
@@ -128,8 +158,10 @@ export default function App() {
                   else if (targetDist < 250) setEnemyStrategy('TACTICAL ENGAGEMENT ZONE');
                   else setEnemyStrategy(radarMode === 'AIR' ? 'TARGET DETECTED ON RADAR' : 'SONAR CONTACT ACQUIRED');
 
-                  if (targetDist < 120) setAdvisorText(`⚠️ ALARM: ${target.id} (${target.type}) BREACHED INNER DEFENSE!`);
-                  else setAdvisorText(`🚨 ${radarMode === 'AIR' ? 'RADAR' : 'SONAR'} ALERT: BOGIES IN RANGE.`);
+                  if (!kaliRef.current.active) {
+                    if (targetDist < 120) setAdvisorText(`⚠️ ALARM: ${target.id} (${target.type}) BREACHED INNER DEFENSE!`);
+                    else setAdvisorText(`🚨 ${radarMode === 'AIR' ? 'RADAR' : 'SONAR'} ALERT: BOGIES IN RANGE.`);
+                  }
 
                   let objAngle = Math.atan2(target.y - cy, target.x - cx);
                   if (objAngle < 0) objAngle += Math.PI * 2;
@@ -179,7 +211,7 @@ export default function App() {
         }
       }
 
-      // --- ADVANCED CANVAS DRAWING ---
+      // --- CANVAS DRAWING ---
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext('2d');
@@ -189,15 +221,19 @@ export default function App() {
         const sweepSpeed = isNavy ? 2500 : 1200;
         const sweepAngle = (Date.now() / sweepSpeed) % (Math.PI * 2);
 
-        // STYLING DIFFERENCES: AIR vs NAVY
         const radarBgColor = isNavy ? '#010a17' : '#011c09'; 
-        const radarLineColor = isNavy ? 'rgba(14, 165, 233, 0.3)' : 'rgba(34, 197, 94, 0.3)'; // Navy Cyan vs Air Green
+        const radarLineColor = isNavy ? 'rgba(14, 165, 233, 0.3)' : 'rgba(34, 197, 94, 0.3)'; 
         const radarSweepColorSolid = isNavy ? 'rgba(56, 189, 248, 0.7)' : 'rgba(74, 222, 128, 0.8)';
         const textColor = isNavy ? '#38bdf8' : '#4ade80';
 
         ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Bezel
+        // K.A.L.I BACKGROUND GLITCH EFFECT
+        if (kaliRef.current.active) {
+          ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.1)' : 'rgba(0,255,255,0.1)';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
         ctx.beginPath(); ctx.arc(cx, cy, radarRadius + 25, 0, Math.PI * 2);
         ctx.fillStyle = '#0f172a'; ctx.fill(); 
         ctx.strokeStyle = '#334155'; ctx.lineWidth = 2; ctx.stroke();
@@ -205,7 +241,6 @@ export default function App() {
         ctx.font = '10px "Courier New", monospace';
         ctx.fillStyle = '#94a3b8'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         
-        // Degree Markers
         for(let i=0; i<360; i+= (isNavy ? 45 : 15)) {
           const rad = (i - 90) * (Math.PI / 180);
           const isMajor = i % 90 === 0;
@@ -234,41 +269,33 @@ export default function App() {
         ctx.clip();
         ctx.fillStyle = radarBgColor; ctx.fill();
 
-        // Grid Design (Air vs Navy)
         ctx.strokeStyle = radarLineColor; ctx.lineWidth = 1;
         if (!isNavy) {
-          // Air: Dense Azimuth Lines
           for (let i=0; i<360; i+=30) {
             const rad = i * (Math.PI / 180);
             ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(rad) * radarRadius, cy + Math.sin(rad) * radarRadius); ctx.stroke();
           }
         } else {
-          // Navy: Simple Crosshair
           ctx.beginPath(); ctx.moveTo(cx, cy - radarRadius); ctx.lineTo(cx, cy + radarRadius); ctx.stroke();
           ctx.beginPath(); ctx.moveTo(cx - radarRadius, cy); ctx.lineTo(cx + radarRadius, cy); ctx.stroke();
         }
         
-        // Concentric Distance Rings
         for (let r = 60; r <= radarRadius; r += 60) {
           ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
           ctx.fillStyle = radarLineColor;
           ctx.fillText(`${r/2}${isNavy ? 'Yds' : 'NM'}`, cx + 2, cy - r - 2);
         }
 
-        // SWEEP & PING EFFECTS
-        if (isNavy && isAIActive) {
-          // NAVY: Expanding Sonar Ping Ring
+        if (isNavy && isAIActive && !kaliRef.current.active) {
           const pingProgress = (Date.now() % 2500) / 2500;
           const pingRadius = pingProgress * radarRadius;
-          ctx.beginPath();
-          ctx.arc(cx, cy, pingRadius, 0, Math.PI * 2);
-          ctx.strokeStyle = `rgba(56, 189, 248, ${1 - pingProgress})`; // Fades out as it expands
-          ctx.lineWidth = 4;
-          ctx.stroke();
+          ctx.beginPath(); ctx.arc(cx, cy, pingRadius, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(56, 189, 248, ${1 - pingProgress})`; 
+          ctx.lineWidth = 4; ctx.stroke();
         }
 
-        // Standard Sweep Gradient
-        if (ctx.createConicGradient) {
+        // Hide regular sweep if KALI is firing
+        if (ctx.createConicGradient && !kaliRef.current.active) {
           const gradient = ctx.createConicGradient(sweepAngle - Math.PI/2, cx, cy);
           gradient.addColorStop(0, radarSweepColorSolid); 
           gradient.addColorStop(isNavy ? 0.05 : 0.1, isNavy ? 'rgba(56,189,248,0.1)' : 'rgba(34,197,94,0.2)'); 
@@ -277,10 +304,38 @@ export default function App() {
           ctx.beginPath(); ctx.arc(cx, cy, radarRadius, 0, Math.PI*2); ctx.fill();
         }
         
-        // Leading Line
-        ctx.beginPath(); ctx.moveTo(cx, cy); 
-        ctx.lineTo(cx + Math.cos(sweepAngle)*radarRadius, cy + Math.sin(sweepAngle)*radarRadius);
-        ctx.strokeStyle = isNavy ? '#7dd3fc' : '#ffffff'; ctx.lineWidth = isNavy ? 1 : 2; ctx.stroke();
+        if (!kaliRef.current.active) {
+          ctx.beginPath(); ctx.moveTo(cx, cy); 
+          ctx.lineTo(cx + Math.cos(sweepAngle)*radarRadius, cy + Math.sin(sweepAngle)*radarRadius);
+          ctx.strokeStyle = isNavy ? '#7dd3fc' : '#ffffff'; ctx.lineWidth = isNavy ? 1 : 2; ctx.stroke();
+        }
+
+        // K.A.L.I BEAM RENDERING (CLASSIFIED WEAPON)
+        if (kaliRef.current.active) {
+          ctx.beginPath();
+          ctx.arc(cx, cy, kaliRef.current.radius, 0, Math.PI * 2);
+          
+          // Blinding White/Cyan Energy Wave
+          const kaliGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, kaliRef.current.radius);
+          kaliGrad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+          kaliGrad.addColorStop(0.8, 'rgba(6, 182, 212, 0.8)'); // Cyan
+          kaliGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          
+          ctx.fillStyle = kaliGrad;
+          ctx.fill();
+          
+          ctx.strokeStyle = '#22d3ee'; // Bright Cyan Rim
+          ctx.lineWidth = 10;
+          ctx.stroke();
+
+          // Glitch Warning Text
+          ctx.fillStyle = '#ff0000';
+          ctx.font = 'bold 30px "Courier New", monospace';
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = 'red';
+          ctx.fillText(">> K.A.L.I EMP DISCHARGE <<", cx - 180, cy + (Math.random() * 10 - 5));
+          ctx.shadowBlur = 0;
+        }
 
         ctx.restore(); // END MASK
 
@@ -288,13 +343,13 @@ export default function App() {
           ctx.fillStyle = color; ctx.font = `${bold ? 'bold ' : ''}10px "Courier New", monospace`; ctx.fillText(text, x, y); 
         };
 
-        // Base
+        ctx.beginPath(); ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 10, cy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy + 10); ctx.stroke();
         ctx.beginPath(); ctx.rect(cx - 15, cy - 10, 30, 20);
-        ctx.fillStyle = isNavy ? 'rgba(56, 189, 248, 0.15)' : 'rgba(56, 189, 248, 0.2)'; ctx.fill();
-        ctx.strokeStyle = isNavy ? '#0ea5e9' : '#38bdf8'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.fillStyle = `rgba(56, 189, 248, 0.2)`; ctx.fill();
+        ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1; ctx.stroke();
         drawTacticalText(`HQ-SYS [${Math.floor(baseHealth)}%]`, cx + 20, cy + 5, isNavy ? '#0ea5e9' : '#38bdf8', true);
 
-        // Defenses
         units.forEach(u => {
           const isFiring = Date.now() - (lastDefFire.current[u.id] || 0) < 200;
           ctx.beginPath(); ctx.rect(u.x - 8, u.y - 6, 16, 12);
@@ -304,7 +359,6 @@ export default function App() {
           drawTacticalText(isNavy ? 'CRU' : 'TNK', u.x - 10, u.y + 14, textColor);
         });
 
-        // Own Ship
         ctx.beginPath(); ctx.arc(ownShip.x, ownShip.y, 8, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(96, 165, 250, 0.4)`; ctx.fill();
         ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2; ctx.stroke();
@@ -319,7 +373,6 @@ export default function App() {
             let bearing = (Math.atan2(enemy.y - cy, enemy.x - cx) * 180 / Math.PI) + 90;
             if (bearing < 0) bearing += 360;
             
-            // Colors: Air uses Red, Navy uses bright Orange/Yellow for Sonar returns
             const jetColor = isInsideRadar ? (isNavy ? '#f59e0b' : '#ef4444') : '#64748b'; 
             const glowColor = isInsideRadar ? (isNavy ? '#d97706' : '#dc2626') : '#475569';
             
@@ -330,34 +383,26 @@ export default function App() {
             ctx.save();
             ctx.translate(enemy.x, enemy.y);
             
-            // TARGET BRACKETS (Air = Square, Navy = Dashed Circle)
-            if(isInsideRadar) {
+            if(isInsideRadar && !kaliRef.current.active) {
               if (isNavy) {
-                ctx.beginPath();
-                ctx.arc(0, 0, 20, 0, Math.PI * 2);
-                ctx.strokeStyle = 'rgba(245, 158, 11, 0.8)'; // Orange Sonar lock
-                ctx.setLineDash([4, 6]);
-                ctx.lineWidth = 1.5; ctx.stroke();
-                ctx.setLineDash([]);
+                ctx.beginPath(); ctx.arc(0, 0, 20, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(245, 158, 11, 0.8)'; 
+                ctx.setLineDash([4, 6]); ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]);
               } else {
-                ctx.beginPath();
-                const bSize = 18;
-                ctx.moveTo(-bSize, -bSize/2); ctx.lineTo(-bSize, -bSize); ctx.lineTo(-bSize/2, -bSize); // TL
-                ctx.moveTo(bSize/2, -bSize); ctx.lineTo(bSize, -bSize); ctx.lineTo(bSize, -bSize/2);    // TR
-                ctx.moveTo(bSize, bSize/2); ctx.lineTo(bSize, bSize); ctx.lineTo(bSize/2, bSize);       // BR
-                ctx.moveTo(-bSize/2, bSize); ctx.lineTo(-bSize, bSize); ctx.lineTo(-bSize, bSize/2);    // BL
+                ctx.beginPath(); const bSize = 18;
+                ctx.moveTo(-bSize, -bSize/2); ctx.lineTo(-bSize, -bSize); ctx.lineTo(-bSize/2, -bSize); 
+                ctx.moveTo(bSize/2, -bSize); ctx.lineTo(bSize, -bSize); ctx.lineTo(bSize, -bSize/2);    
+                ctx.moveTo(bSize, bSize/2); ctx.lineTo(bSize, bSize); ctx.lineTo(bSize/2, bSize);       
+                ctx.moveTo(-bSize/2, bSize); ctx.lineTo(-bSize, bSize); ctx.lineTo(-bSize, bSize/2);    
                 ctx.strokeStyle = 'rgba(239, 68, 68, 0.7)'; ctx.lineWidth = 2; ctx.stroke();
               }
             }
 
-            // Draw Asset Shape
             ctx.rotate(angle);
             ctx.beginPath();
             if (isNavy) {
-              // Submarine shape
               ctx.moveTo(0, -12); ctx.lineTo(4, -6); ctx.lineTo(4, 8); ctx.lineTo(0, 12); ctx.lineTo(-4, 8); ctx.lineTo(-4, -6);
             } else {
-              // Jet shape
               ctx.moveTo(0, -14); ctx.lineTo(4, -4); ctx.lineTo(14, 2); ctx.lineTo(4, 6); ctx.lineTo(2, 10); ctx.lineTo(8, 14); ctx.lineTo(-8, 14); ctx.lineTo(-2, 10); ctx.lineTo(-4, 6); ctx.lineTo(-14, 2); ctx.lineTo(-4, -4);
             }
             ctx.closePath();
@@ -365,8 +410,7 @@ export default function App() {
             ctx.lineWidth = 1; ctx.strokeStyle = isInsideRadar ? '#ffffff' : '#000000'; ctx.stroke();
             ctx.restore();
 
-            // HUD TEXT
-            if (isInsideRadar) {
+            if (isInsideRadar && !kaliRef.current.active) {
               const lineColor = isNavy ? 'rgba(245, 158, 11, 0.5)' : 'rgba(239, 68, 68, 0.5)';
               const txtColor = isNavy ? '#f59e0b' : '#ff0000';
               const subTxtColor = isNavy ? '#fcd34d' : '#fca5a5';
@@ -380,16 +424,19 @@ export default function App() {
               drawTacticalText(`DST: ${Math.floor(distToCenter/2)}${isNavy ? 'Yds' : 'NM'}`, enemy.x + 50, enemy.y - 8, subTxtColor);
               drawTacticalText(`${isNavy?'DPT':'ALT'}: ${enemy.alt}`, enemy.x + 50, enemy.y + 2, subTxtColor);
               drawTacticalText(`KTS: ${Math.floor(enemy.speed * 200)}`, enemy.x + 50, enemy.y + 12, subTxtColor);
-            } else {
+            } else if (!kaliRef.current.active) {
               drawTacticalText(isNavy ? `CONTACT` : `UFO M${enemy.speed.toFixed(1)}`, enemy.x + 15, enemy.y, '#94a3b8');
             }
           }
         });
 
-        // Weapons
         flares.forEach(f => { ctx.beginPath(); ctx.moveTo(f.x - 5, f.y - 5); ctx.lineTo(f.x + 5, f.y + 5); ctx.moveTo(f.x + 5, f.y - 5); ctx.lineTo(f.x - 5, f.y + 5); ctx.strokeStyle = isNavy ? '#38bdf8' : '#facc15'; ctx.lineWidth = 2; ctx.stroke(); });
         missiles.forEach(m => { ctx.beginPath(); ctx.arc(m.x, m.y, 3, 0, Math.PI * 2); ctx.fillStyle = m.type === 'AUTO' ? '#eab308' : (m.type === 'TANK' ? '#f97316' : '#ffffff'); ctx.fill(); });
-        explosions.forEach(e => { ctx.beginPath(); ctx.arc(e.x, e.y, (15 - e.life) * 2, 0, Math.PI * 2); ctx.strokeStyle = `rgba(239, 68, 68, ${e.life / 15})`; ctx.lineWidth = 3; ctx.stroke(); });
+        explosions.forEach(e => { 
+          ctx.beginPath(); ctx.arc(e.x, e.y, (15 - e.life) * 3, 0, Math.PI * 2); // Bigger explosion
+          ctx.fillStyle = `rgba(239, 68, 68, ${e.life / 20})`; ctx.fill(); // Fill for EMP death
+          ctx.strokeStyle = `rgba(250, 204, 21, ${e.life / 15})`; ctx.lineWidth = 3; ctx.stroke(); 
+        });
       }
       animationFrameId = requestAnimationFrame(loop);
     };
@@ -421,19 +468,21 @@ export default function App() {
             </button>
             <button onClick={() => handleReset(radarMode)} style={{ width: '100%', padding: '10px', backgroundColor: '#1e293b', color: '#cbd5e1', border: '1px solid #475569', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>RESET FIELD</button>
           </div>
+          
+          {/* TOP SECRET: PROJECT K.A.L.I BUTTON */}
+          <div style={{ backgroundColor: '#450a0a', padding: '15px', borderRadius: '6px', border: '2px dashed #dc2626', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'repeating-linear-gradient(45deg, #ef4444, #ef4444 10px, #000 10px, #000 20px)' }}></div>
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '4px', background: 'repeating-linear-gradient(45deg, #ef4444, #ef4444 10px, #000 10px, #000 20px)' }}></div>
+            <h2 style={{ color: '#ef4444', fontSize: '12px', marginTop: '5px', marginBottom: '10px', textAlign: 'center', textShadow: '0 0 5px red' }}>⚠️ CLASSIFIED WEAPON</h2>
+            <button onClick={triggerKALI} style={{ width: '100%', padding: '15px 10px', backgroundColor: '#000000', color: '#ef4444', border: '1px solid #dc2626', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', textShadow: '0 0 5px red', boxShadow: '0 0 15px rgba(220, 38, 38, 0.4)' }}>
+              ☢️ INITIATE K.A.L.I
+            </button>
+            <div style={{ color: '#fca5a5', fontSize: '9px', textAlign: 'center', marginTop: '8px' }}>ORBITAL DIRECTED ENERGY EMP</div>
+          </div>
 
           <div style={{ backgroundColor: '#1e1b4b', border: '1px solid #6366f1', padding: '12px', borderRadius: '6px' }}>
             <div style={{ color: '#818cf8', fontSize: '11px', fontWeight: 'bold', marginBottom: '6px' }}>AI ADVISORY</div>
             <div style={{ color: '#e0e7ff', fontSize: '12px', lineHeight: '1.4' }}>{advisorText}</div>
-          </div>
-
-          <div style={{ backgroundColor: radarMode === 'NAVY' ? 'rgba(8, 47, 73, 0.4)' : 'rgba(20, 83, 45, 0.1)', padding: '12px', border: `1px solid ${radarMode === 'NAVY' ? '#0ea5e9' : '#14532d'}`, borderRadius: '6px' }}>
-            <h2 style={{ color: radarMode === 'NAVY' ? '#38bdf8' : '#4ade80', fontSize: '12px', marginTop: 0, borderBottom: `1px solid ${radarMode === 'NAVY' ? '#0284c7' : '#14532d'}`, paddingBottom: '6px' }}>🛡️ ALLIED FORCES</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px', fontSize: '11px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#94a3b8' }}>Unit:</span> <span style={{ color: radarMode === 'NAVY' ? '#38bdf8' : '#4ade80', fontWeight: 'bold' }}>1 ({radarMode === 'AIR' ? 'BLU-01 Jet' : 'Submarine'})</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#94a3b8' }}>Defenses:</span> <span style={{ color: radarMode === 'NAVY' ? '#38bdf8' : '#4ade80', fontWeight: 'bold' }}>{units.length} ({radarMode === 'AIR' ? 'Tanks' : 'Cruisers'})</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#94a3b8' }}>{radarMode === 'AIR' ? 'SAMs:' : 'Torpedo:'}</span> <span style={{ color: '#eab308', fontWeight: 'bold' }}>1 (Auto)</span></div>
-            </div>
           </div>
         </div>
 
@@ -451,7 +500,6 @@ export default function App() {
             <h2 style={{ color: '#ef4444', fontSize: '12px', marginTop: 0, borderBottom: '1px solid #7f1d1d', paddingBottom: '6px' }}>⚠️ THREAT {radarMode === 'AIR' ? 'RADAR' : 'SONAR'}</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px', fontSize: '11px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#fca5a5' }}>Threat:</span> <span style={{ color: activeThreats > 0 ? '#ef4444' : '#4ade80', fontWeight: 'bold' }}>{activeThreats > 0 ? 'ACTIVE' : 'CLEAR'}</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#fca5a5' }}>Tracking:</span> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{activeThreats} / 3</span></div>
               
               <div style={{ backgroundColor: '#451a1a', padding: '10px', borderRadius: '4px', marginTop: '5px' }}>
                 <div style={{ color: '#fca5a5', fontSize: '10px', fontWeight: 'bold', marginBottom: '8px' }}>TARGET TELEMETRY</div>
@@ -465,6 +513,9 @@ export default function App() {
                     <div key={e.id} style={{ marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px dashed #7f1d1d' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: col, fontWeight: 'bold' }}>
                         <span>{e.id} [{e.type}]</span> <span>{status}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: '#fca5a5', marginTop: '4px' }}>
+                        <span>Spd: MACH {e.speed.toFixed(1)}</span> <span>HP: {e.health}%</span>
                       </div>
                     </div>
                   );
