@@ -28,9 +28,6 @@ export default function App() {
   const lastDefFire = useRef({ 'DEF-1': 0, 'DEF-2': 0 });
   const movementRef = useRef({ dx: 0, dy: 0 });
 
-  // FIXED K.A.L.I WEAPON SYSTEM STATE
-  const kaliRef = useRef({ active: false, radius: 0, opacity: 0 });
-
   const [advisorText, setAdvisorText] = useState('SYSTEM READY. AWAITING COMMANDER DIRECTIVE.');
   const [hitProbability, setHitProbability] = useState(0);
   const [enemyStrategy, setEnemyStrategy] = useState('SCANNING BORDERS...');
@@ -55,16 +52,8 @@ export default function App() {
   const fireMissile = () => { if (baseHealth > 0) setMissiles(prev => [...prev, { x: ownShip.x, y: ownShip.y, speed: 12, type: 'MANUAL', targetId: null }]); };
   const deployFlare = () => { if (baseHealth > 0) setFlares(prev => [...prev, { x: ownShip.x, y: ownShip.y, life: 100 }]); };
 
-  const triggerKALI = () => {
-    if (baseHealth > 0 && !kaliRef.current.active) {
-      kaliRef.current = { active: true, radius: 10, opacity: 1 };
-      setAdvisorText('☢️ CLASSIFIED: PROJECT K.A.L.I ACTIVATED. ORBITAL EMP DISCHARGING!');
-    }
-  };
-
   const handleReset = (newMode = radarMode) => {
     setOwnShip({ x: 500, y: 460 });
-    kaliRef.current = { active: false, radius: 0, opacity: 0 };
     if (newMode === 'AIR') {
       setEnemies([
         { id: 'TRK-01', type: 'FIGHTER JET', x: 950, y: 50, health: 100, speed: 1.8, originalSpeed: 1.8, alt: 24000, deathTimer: 0 },
@@ -100,15 +89,6 @@ export default function App() {
 
         const cx = basePos.x, cy = basePos.y;
 
-        // FIXED K.A.L.I BEAM FADE-OUT LOGIC
-        if (kaliRef.current.active) {
-          kaliRef.current.radius += 40; 
-          kaliRef.current.opacity -= 0.015; // Smoothly fades out
-          if (kaliRef.current.opacity <= 0 || kaliRef.current.radius > 2000) {
-            kaliRef.current = { active: false, radius: 0, opacity: 0 }; // Resets radar back to normal completely
-          }
-        }
-
         if (isAIActive && baseHealth > 0) {
           const sweepSpeed = radarMode === 'AIR' ? 1200 : 2500;
           const sweepAngle = (Date.now() / sweepSpeed) % (Math.PI * 2);
@@ -116,10 +96,10 @@ export default function App() {
           setEnemies(prevEnemies => {
             let activeEnemies = prevEnemies.map(enemy => {
               
-              // CONTINUOUS THREAT PROTOCOL (Enemies respawn after death)
+              // CONTINUOUS THREAT PROTOCOL (Respawn after destroyed by SAM/Tanks)
               if (enemy.health <= 0) {
                 const newTimer = enemy.deathTimer + 1;
-                if (newTimer > 80) { // Wait 2.5 seconds before respawning a new enemy
+                if (newTimer > 80) { // Approx 2.5 seconds wait
                   const angle = Math.random() * Math.PI * 2;
                   const dist = radarRadius + 200 + Math.random() * 200; // Spawns outside radar
                   return {
@@ -132,15 +112,6 @@ export default function App() {
                   };
                 }
                 return { ...enemy, deathTimer: newTimer };
-              }
-
-              const distToCenter = Math.hypot(enemy.x - cx, enemy.y - cy);
-              
-              // K.A.L.I HIT INSTANT DESTRUCTION
-              if (kaliRef.current.active && kaliRef.current.opacity > 0.5 && distToCenter <= kaliRef.current.radius) {
-                setExplosions(ex => [...ex, { x: enemy.x, y: enemy.y, life: 25 }]); 
-                setScore(s => s + 500);
-                return { ...enemy, health: 0, speed: 0, deathTimer: 0 }; 
               }
 
               let tx = basePos.x, ty = basePos.y;
@@ -160,7 +131,7 @@ export default function App() {
             
             setMissiles(prevMissiles => {
               let newMissiles = [...prevMissiles];
-              if (aliveEnemies.length > 0 && !kaliRef.current.active) { 
+              if (aliveEnemies.length > 0) { 
                 let visibleEnemies = aliveEnemies.filter(e => Math.hypot(e.x - cx, e.y - cy) <= radarRadius);
                 if (visibleEnemies.length > 0) {
                   let closest = visibleEnemies.reduce((min, e) => {
@@ -176,10 +147,8 @@ export default function App() {
                   else if (targetDist < 250) setEnemyStrategy('TACTICAL ENGAGEMENT ZONE');
                   else setEnemyStrategy(radarMode === 'AIR' ? 'TARGET DETECTED ON RADAR' : 'SONAR CONTACT ACQUIRED');
 
-                  if (!kaliRef.current.active) {
-                    if (targetDist < 120) setAdvisorText(`⚠️ ALARM: ${target.id} (${target.type}) BREACHED INNER DEFENSE!`);
-                    else setAdvisorText(`🚨 ${radarMode === 'AIR' ? 'RADAR' : 'SONAR'} ALERT: BOGIES IN RANGE.`);
-                  }
+                  if (targetDist < 120) setAdvisorText(`⚠️ ALARM: ${target.id} (${target.type}) BREACHED INNER DEFENSE!`);
+                  else setAdvisorText(`🚨 ${radarMode === 'AIR' ? 'RADAR' : 'SONAR'} ALERT: BOGIES IN RANGE.`);
 
                   let objAngle = Math.atan2(target.y - cy, target.x - cx);
                   if (objAngle < 0) objAngle += Math.PI * 2;
@@ -203,7 +172,7 @@ export default function App() {
                       setExplosions(ex => [...ex, { x: unit.x, y: unit.y - 15, life: 3 }]);
                     }
                   });
-                } else if (!kaliRef.current.active) {
+                } else {
                   setAdvisorText(`SCANNING BORDERS. NO CONTACTS IN ${radarMode === 'AIR' ? 'RADAR' : 'SONAR'}.`);
                   setHitProbability(0); setEnemyStrategy('APPROACHING...');
                 }
@@ -249,13 +218,6 @@ export default function App() {
         const textColor = isNavy ? '#38bdf8' : '#4ade80';
 
         ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        // K.A.L.I BACKGROUND GLITCH WITH FADE
-        if (kaliRef.current.active) {
-          const op = Math.max(0, kaliRef.current.opacity);
-          ctx.fillStyle = Math.random() > 0.5 ? `rgba(255,255,255,${op * 0.15})` : `rgba(0,255,255,${op * 0.15})`;
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
 
         ctx.beginPath(); ctx.arc(cx, cy, radarRadius + 25, 0, Math.PI * 2);
         ctx.fillStyle = '#0f172a'; ctx.fill(); 
@@ -308,7 +270,7 @@ export default function App() {
           ctx.fillText(`${r/2}${isNavy ? 'Yds' : 'NM'}`, cx + 2, cy - r - 2);
         }
 
-        if (isNavy && isAIActive && !kaliRef.current.active) {
+        if (isNavy && isAIActive) {
           const pingProgress = (Date.now() % 2500) / 2500;
           const pingRadius = pingProgress * radarRadius;
           ctx.beginPath(); ctx.arc(cx, cy, pingRadius, 0, Math.PI * 2);
@@ -316,7 +278,7 @@ export default function App() {
           ctx.lineWidth = 4; ctx.stroke();
         }
 
-        if (ctx.createConicGradient && !kaliRef.current.active) {
+        if (ctx.createConicGradient) {
           const gradient = ctx.createConicGradient(sweepAngle - Math.PI/2, cx, cy);
           gradient.addColorStop(0, radarSweepColorSolid); 
           gradient.addColorStop(isNavy ? 0.05 : 0.1, isNavy ? 'rgba(56,189,248,0.1)' : 'rgba(34,197,94,0.2)'); 
@@ -325,31 +287,9 @@ export default function App() {
           ctx.beginPath(); ctx.arc(cx, cy, radarRadius, 0, Math.PI*2); ctx.fill();
         }
         
-        if (!kaliRef.current.active) {
-          ctx.beginPath(); ctx.moveTo(cx, cy); 
-          ctx.lineTo(cx + Math.cos(sweepAngle)*radarRadius, cy + Math.sin(sweepAngle)*radarRadius);
-          ctx.strokeStyle = isNavy ? '#7dd3fc' : '#ffffff'; ctx.lineWidth = isNavy ? 1 : 2; ctx.stroke();
-        }
-
-        // PERFECTED K.A.L.I BEAM RENDERING WITH OPACITY
-        if (kaliRef.current.active) {
-          const op = Math.max(0, kaliRef.current.opacity);
-          
-          ctx.beginPath();
-          ctx.arc(cx, cy, kaliRef.current.radius, 0, Math.PI * 2);
-          const kaliGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, kaliRef.current.radius);
-          kaliGrad.addColorStop(0, `rgba(255, 255, 255, ${op})`);
-          kaliGrad.addColorStop(0.8, `rgba(6, 182, 212, ${op * 0.8})`); 
-          kaliGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-          ctx.fillStyle = kaliGrad; ctx.fill();
-          
-          ctx.strokeStyle = `rgba(34, 211, 238, ${op})`; ctx.lineWidth = 10; ctx.stroke();
-
-          ctx.fillStyle = `rgba(255, 0, 0, ${op})`; ctx.font = 'bold 32px "Courier New", monospace';
-          ctx.shadowBlur = 10; ctx.shadowColor = `rgba(255, 0, 0, ${op})`;
-          ctx.fillText(">> K.A.L.I EMP DISCHARGE <<", cx - 220, cy + (Math.random() * 10 - 5));
-          ctx.shadowBlur = 0;
-        }
+        ctx.beginPath(); ctx.moveTo(cx, cy); 
+        ctx.lineTo(cx + Math.cos(sweepAngle)*radarRadius, cy + Math.sin(sweepAngle)*radarRadius);
+        ctx.strokeStyle = isNavy ? '#7dd3fc' : '#ffffff'; ctx.lineWidth = isNavy ? 1 : 2; ctx.stroke();
 
         ctx.restore(); // END MASK
 
@@ -378,6 +318,7 @@ export default function App() {
         ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2; ctx.stroke();
         drawTacticalText(isNavy ? 'SUB-01' : 'BLU-01', ownShip.x + 10, ownShip.y - 5, '#60a5fa', true);
 
+        // ENEMIES
         enemies.forEach(enemy => {
           const distToCenter = Math.hypot(enemy.x - cx, enemy.y - cy);
           const isInsideRadar = distToCenter <= radarRadius;
@@ -395,7 +336,7 @@ export default function App() {
           ctx.save();
           ctx.translate(enemy.x, enemy.y);
           
-          if(isInsideRadar && !kaliRef.current.active && enemy.health > 0) {
+          if(isInsideRadar && enemy.health > 0) {
             if (isNavy) {
               ctx.beginPath(); ctx.arc(0, 0, 20, 0, Math.PI * 2);
               ctx.strokeStyle = 'rgba(245, 158, 11, 0.8)'; 
@@ -423,10 +364,10 @@ export default function App() {
           ctx.restore();
 
           if (enemy.health <= 0) {
-            if (isInsideRadar && !kaliRef.current.active) {
+            if (isInsideRadar) {
               drawTacticalText(`WRECKAGE [T-${Math.max(0, Math.floor((80 - enemy.deathTimer)/30))}s]`, enemy.x + 15, enemy.y, '#475569');
             }
-          } else if (isInsideRadar && !kaliRef.current.active) {
+          } else if (isInsideRadar) {
             const lineColor = isNavy ? 'rgba(245, 158, 11, 0.5)' : 'rgba(239, 68, 68, 0.5)';
             const txtColor = isNavy ? '#f59e0b' : '#ff0000';
             const subTxtColor = isNavy ? '#fcd34d' : '#fca5a5';
@@ -440,7 +381,7 @@ export default function App() {
             drawTacticalText(`DST: ${Math.floor(distToCenter/2)}${isNavy ? 'Yds' : 'NM'}`, enemy.x + 50, enemy.y - 8, subTxtColor);
             drawTacticalText(`${isNavy?'DPT':'ALT'}: ${enemy.alt}`, enemy.x + 50, enemy.y + 2, subTxtColor);
             drawTacticalText(`KTS: ${Math.floor(enemy.speed * 200)}`, enemy.x + 50, enemy.y + 12, subTxtColor);
-          } else if (!kaliRef.current.active) {
+          } else {
             drawTacticalText(isNavy ? `CONTACT` : `UFO M${enemy.speed.toFixed(1)}`, enemy.x + 15, enemy.y, '#94a3b8');
           }
         });
@@ -483,20 +424,19 @@ export default function App() {
             </button>
             <button onClick={() => handleReset(radarMode)} style={{ width: '100%', padding: '10px', backgroundColor: '#1e293b', color: '#cbd5e1', border: '1px solid #475569', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>RESET FIELD</button>
           </div>
-          
-          <div style={{ backgroundColor: '#450a0a', padding: '15px', borderRadius: '6px', border: '2px dashed #dc2626', position: 'relative', overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'repeating-linear-gradient(45deg, #ef4444, #ef4444 10px, #000 10px, #000 20px)' }}></div>
-            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '4px', background: 'repeating-linear-gradient(45deg, #ef4444, #ef4444 10px, #000 10px, #000 20px)' }}></div>
-            <h2 style={{ color: '#ef4444', fontSize: '12px', marginTop: '5px', marginBottom: '10px', textAlign: 'center', textShadow: '0 0 5px red' }}>⚠️ CLASSIFIED WEAPON</h2>
-            <button onClick={triggerKALI} style={{ width: '100%', padding: '15px 10px', backgroundColor: '#000000', color: '#ef4444', border: '1px solid #dc2626', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', textShadow: '0 0 5px red', boxShadow: '0 0 15px rgba(220, 38, 38, 0.4)' }}>
-              ☢️ INITIATE K.A.L.I
-            </button>
-            <div style={{ color: '#fca5a5', fontSize: '9px', textAlign: 'center', marginTop: '8px' }}>ORBITAL DIRECTED ENERGY EMP</div>
-          </div>
 
           <div style={{ backgroundColor: '#1e1b4b', border: '1px solid #6366f1', padding: '12px', borderRadius: '6px' }}>
             <div style={{ color: '#818cf8', fontSize: '11px', fontWeight: 'bold', marginBottom: '6px' }}>AI ADVISORY</div>
             <div style={{ color: '#e0e7ff', fontSize: '12px', lineHeight: '1.4' }}>{advisorText}</div>
+          </div>
+
+          <div style={{ backgroundColor: radarMode === 'NAVY' ? 'rgba(8, 47, 73, 0.4)' : 'rgba(20, 83, 45, 0.1)', padding: '12px', border: `1px solid ${radarMode === 'NAVY' ? '#0ea5e9' : '#14532d'}`, borderRadius: '6px' }}>
+            <h2 style={{ color: radarMode === 'NAVY' ? '#38bdf8' : '#4ade80', fontSize: '12px', marginTop: 0, borderBottom: `1px solid ${radarMode === 'NAVY' ? '#0284c7' : '#14532d'}`, paddingBottom: '6px' }}>🛡️ ALLIED FORCES</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px', fontSize: '11px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#94a3b8' }}>Unit:</span> <span style={{ color: radarMode === 'NAVY' ? '#38bdf8' : '#4ade80', fontWeight: 'bold' }}>1 ({radarMode === 'AIR' ? 'BLU-01 Jet' : 'Submarine'})</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#94a3b8' }}>Defenses:</span> <span style={{ color: radarMode === 'NAVY' ? '#38bdf8' : '#4ade80', fontWeight: 'bold' }}>{units.length} ({radarMode === 'AIR' ? 'Tanks' : 'Cruisers'})</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#94a3b8' }}>{radarMode === 'AIR' ? 'SAMs:' : 'Torpedo:'}</span> <span style={{ color: '#eab308', fontWeight: 'bold' }}>1 (Auto)</span></div>
+            </div>
           </div>
         </div>
 
@@ -514,6 +454,7 @@ export default function App() {
             <h2 style={{ color: '#ef4444', fontSize: '12px', marginTop: 0, borderBottom: '1px solid #7f1d1d', paddingBottom: '6px' }}>⚠️ THREAT {radarMode === 'AIR' ? 'RADAR' : 'SONAR'}</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px', fontSize: '11px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#fca5a5' }}>Threat:</span> <span style={{ color: activeThreats > 0 ? '#ef4444' : '#4ade80', fontWeight: 'bold' }}>{activeThreats > 0 ? 'ACTIVE' : 'CLEAR'}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#fca5a5' }}>Tracking:</span> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{activeThreats} / 3</span></div>
               
               <div style={{ backgroundColor: '#451a1a', padding: '10px', borderRadius: '4px', marginTop: '5px' }}>
                 <div style={{ color: '#fca5a5', fontSize: '10px', fontWeight: 'bold', marginBottom: '8px' }}>TARGET TELEMETRY</div>
