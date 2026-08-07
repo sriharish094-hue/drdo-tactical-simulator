@@ -17,6 +17,9 @@ export default function App() {
     { id: 'BMB-03', type: 'HEAVY BOMBER', x: 900, y: 700, health: 100, speed: 0.7, originalSpeed: 0.7, alt: 32000, deathTimer: 0 }
   ]);
 
+  // NEW FEATURE: Manual Priority Target Lock state
+  const [priorityTargetId, setPriorityTargetId] = useState(null);
+
   const units = [ { id: 'DEF-1', x: 440, y: 475 }, { id: 'DEF-2', x: 560, y: 475 } ];
   
   const [missiles, setMissiles] = useState([]);
@@ -53,6 +56,8 @@ export default function App() {
 
   const handleReset = (newMode = radarMode) => {
     setOwnShip({ x: 500, y: 480 });
+    // Reset priority target on mode switch/reset
+    setPriorityTargetId(null);
     if (newMode === 'AIR') {
       setEnemies([
         { id: 'TRK-01', type: 'FIGHTER JET', x: 950, y: 50, health: 100, speed: 1.8, originalSpeed: 1.8, alt: 24000, deathTimer: 0 },
@@ -77,6 +82,51 @@ export default function App() {
     handleReset(nextMode);
   };
 
+  // NEW FEATURE: Mouse Click Listener for Target Locking
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const handleCanvasClick = (e) => {
+      // Correct click position within the canvas
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const mouseX = (e.clientX - rect.left) * scaleX;
+      const mouseY = (e.clientY - rect.top) * scaleY;
+
+      // Distance test to ensure click is within radar circle
+      const cx = basePos.x, cy = basePos.y;
+      if (Math.hypot(mouseX - cx, mouseY - cy) > radarRadius + 20) {
+          setPriorityTargetId(null); // Clicked outside bezel, clear lock
+          return;
+      }
+
+      let clickedTargetId = null;
+      enemies.forEach(enemy => {
+        // Hit test radius: 30 pixels around enemy dot
+        if (enemy.health > 0) {
+            const dist = Math.hypot(enemy.x - mouseX, enemy.y - mouseY);
+            if (dist < 30) { 
+                clickedTargetId = enemy.id;
+            }
+        }
+      });
+
+      if (clickedTargetId) {
+          setPriorityTargetId(clickedTargetId);
+          setAdvisorText(`⚠️ COMMANDER OVERRIDE: PRIORITY LOCK ON ${clickedTargetId}. FOCUS FIRE INITIATED.`);
+      } else {
+          setPriorityTargetId(null); // Clicked empty space on radar, clear lock
+          setAdvisorText(`TARGET MARKER CLEARED. DEFAULT TARGETING PROTOCOL.`);
+      }
+    };
+
+    canvas.addEventListener('click', handleCanvasClick);
+    return () => canvas.removeEventListener('click', handleCanvasClick);
+  }, [enemies, isAIActive]);
+
+
   useEffect(() => {
     let animationFrameId;
     let lastTime = performance.now();
@@ -95,12 +145,12 @@ export default function App() {
           setEnemies(prevEnemies => {
             let activeEnemies = prevEnemies.map(enemy => {
               
-              // Continuous Threat Protocol
+              // Continuous Threat respawn
               if (enemy.health <= 0) {
                 const newTimer = enemy.deathTimer + 1;
                 if (newTimer > 80) { 
                   const angle = Math.random() * Math.PI * 2;
-                  const dist = radarRadius + 200 + Math.random() * 200;
+                  const dist = radarRadius + 200 + Math.random() * 200; 
                   return { ...enemy, x: cx + Math.cos(angle) * dist, y: cy + Math.sin(angle) * dist, health: 100, speed: enemy.originalSpeed, deathTimer: 0 };
                 }
                 return { ...enemy, deathTimer: newTimer };
@@ -131,37 +181,49 @@ export default function App() {
                     return d < min.dist ? { enemy: e, dist: d } : min;
                   }, { enemy: visibleEnemies[0], dist: 9999 });
 
-                  let target = closest.enemy;
-                  let targetDist = Math.floor(closest.dist);
+                  // NEW FEATURE: Priortize Marked Target
+                  let targetEnemy = visibleEnemies.find(e => e.id === priorityTargetId) || closest.enemy;
+                  let targetDist = Math.hypot(targetEnemy.x - basePos.x, targetEnemy.y - basePos.y);
 
                   setHitProbability(Math.min(98, Math.max(20, 100 - Math.floor(targetDist / 5))));
-                  if (targetDist < 120) setEnemyStrategy(radarMode === 'AIR' ? 'CRITICAL: SWARM STRIKING HQ' : 'CRITICAL: TORPEDO RANGE');
-                  else if (targetDist < 250) setEnemyStrategy('TACTICAL ENGAGEMENT ZONE');
-                  else setEnemyStrategy(radarMode === 'AIR' ? 'TARGET DETECTED ON RADAR' : 'SONAR CONTACT ACQUIRED');
+                  
+                  if (!priorityTargetId) {
+                      if (targetDist < 120) setAdvisorText(`⚠️ ALARM: ${targetEnemy.id} (${targetEnemy.type}) BREACHED INNER DEFENSE!`);
+                      else setAdvisorText(`🚨 ${radarMode === 'AIR' ? 'RADAR' : 'SONAR'} ALERT: BOGIES IN RANGE.`);
+                  }
 
-                  if (targetDist < 120) setAdvisorText(`⚠️ ALARM: ${target.id} (${target.type}) BREACHED INNER DEFENSE!`);
-                  else setAdvisorText(`🚨 ${radarMode === 'AIR' ? 'RADAR' : 'SONAR'} ALERT: BOGIES IN RANGE.`);
-
-                  let objAngle = Math.atan2(target.y - cy, target.x - cx);
+                  let objAngle = Math.atan2(targetEnemy.y - cy, targetEnemy.x - cx);
                   if (objAngle < 0) objAngle += Math.PI * 2;
                   let diff = sweepAngle - objAngle;
                   if (diff < 0) diff += Math.PI * 2;
 
                   if (diff < 0.5 && Date.now() - lastAutoFire.current > 400 && flares.length === 0) {
-                    newMissiles.push({ x: basePos.x + 20, y: basePos.y - 10, speed: 11, type: 'AUTO', targetId: target.id });
+                    newMissiles.push({ x: basePos.x + 20, y: basePos.y - 10, speed: 11, type: 'AUTO', targetId: targetEnemy.id });
                     lastAutoFire.current = Date.now();
                   }
 
                   units.forEach(unit => {
-                    let closestToUnit = visibleEnemies.reduce((min, e) => {
-                      let d = Math.hypot(e.x - unit.x, e.y - unit.y);
-                      return d < min.dist ? { enemy: e, dist: d } : min;
-                    }, { enemy: null, dist: 9999 });
+                    let unitTarget = visibleEnemies.find(e => e.id === priorityTargetId);
+                    let distToMarked = unitTarget ? Math.hypot(unitTarget.x - unit.x, unitTarget.y - unit.y) : 9999;
+                    
+                    // Defense tank also prioritizes marked target if in range (280nm)
+                    if (unitTarget && distToMarked < 280) {
+                        if (Date.now() - (lastDefFire.current[unit.id] || 0) > 1500) {
+                            newMissiles.push({ x: unit.x, y: unit.y - 10, speed: 9, type: 'TANK', targetId: unitTarget.id });
+                            lastDefFire.current[unit.id] = Date.now();
+                        }
+                    } else {
+                        // Fallback to original closest-to-unit logic
+                        let closestToUnit = visibleEnemies.reduce((min, e) => {
+                            let d = Math.hypot(e.x - unit.x, e.y - unit.y);
+                            return d < min.dist ? { enemy: e, dist: d } : min;
+                        }, { enemy: null, dist: 9999 });
 
-                    if (closestToUnit.enemy && closestToUnit.dist < 280 && Date.now() - (lastDefFire.current[unit.id] || 0) > 1500) {
-                      newMissiles.push({ x: unit.x, y: unit.y - 10, speed: 9, type: 'TANK', targetId: closestToUnit.enemy.id });
-                      lastDefFire.current[unit.id] = Date.now();
-                      setExplosions(ex => [...ex, { x: unit.x, y: unit.y - 15, life: 3 }]);
+                        if (closestToUnit.enemy && closestToUnit.dist < 280 && Date.now() - (lastDefFire.current[unit.id] || 0) > 1500) {
+                          newMissiles.push({ x: unit.x, y: unit.y - 10, speed: 9, type: 'TANK', targetId: closestToUnit.enemy.id });
+                          lastDefFire.current[unit.id] = Date.now();
+                          setExplosions(ex => [...ex, { x: unit.x, y: unit.y - 15, life: 3 }]);
+                        }
                     }
                   });
                 } else {
@@ -327,6 +389,7 @@ export default function App() {
           ctx.save();
           ctx.translate(enemy.x, enemy.y);
           
+          // Original target bracket logic (standard visual)
           if(isInsideRadar && enemy.health > 0) {
             if (isNavy) {
               ctx.beginPath(); ctx.arc(0, 0, 20, 0, Math.PI * 2);
@@ -340,6 +403,19 @@ export default function App() {
               ctx.moveTo(-bSize/2, bSize); ctx.lineTo(-bSize, bSize); ctx.lineTo(-bSize, bSize/2);    
               ctx.strokeStyle = 'rgba(239, 68, 68, 0.7)'; ctx.lineWidth = 2; ctx.stroke();
             }
+          }
+
+          // NEW VISUAL: Marked Target Crosshair
+          if (enemy.id === priorityTargetId && enemy.health > 0) {
+              ctx.rotate((Date.now() / 300)); // Flashing and slow rotate
+              ctx.beginPath();
+              ctx.moveTo(-25, 0); ctx.lineTo(25, 0);
+              ctx.moveTo(0, -25); ctx.lineTo(0, 25);
+              ctx.strokeStyle = 'red';
+              ctx.lineWidth = (Math.sin(Date.now() / 100) > 0) ? 3 : 1; // Flashing
+              ctx.stroke();
+              ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset for shape drawing
+              ctx.translate(enemy.x, enemy.y); // restore position
           }
 
           ctx.rotate(angle);
@@ -389,7 +465,7 @@ export default function App() {
     };
     animationFrameId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isAIActive, ownShip, enemies, radarMode, flares, baseHealth, missiles, explosions]);
+  }, [isAIActive, ownShip, enemies, radarMode, flares, baseHealth, missiles, explosions, priorityTargetId]); // Added priorityTargetId to dependency list
 
   const activeThreats = enemies.filter(e => e.health > 0 && Math.hypot(e.x - basePos.x, e.y - basePos.y) <= radarRadius).length;
 
@@ -397,11 +473,10 @@ export default function App() {
     <div style={{ backgroundColor: '#000000', color: 'white', minHeight: '100vh', padding: '20px', fontFamily: '"Courier New", monospace', backgroundImage: 'radial-gradient(circle, #0f172a 0%, #000000 90%)', display: 'flex', flexDirection: 'column' }}>
       
       <header style={{ borderBottom: '1px solid #38bdf8', paddingBottom: '10px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexShrink: 0 }}>
-        <div><h1 style={{ color: '#38bdf8', margin: 0, fontSize: '26px', textShadow: '0 0 10px rgba(56, 189, 248, 0.4)' }}>COMMANDER'S TERMINAL // C4ISR SYSTEM</h1></div>
+        <div><h1 style={{ color: '#38bdf8', margin: 0, fontSize: '26px', textShadow: '0 0 10px rgba(56, 189, 248, 0.4)' }}>COMMANDER'S TERMINAL // C4ISR SYSTEM 🛡️</h1></div>
         <div style={{ color: '#4ade80', fontSize: '13px', border: '1px solid #4ade80', padding: '5px 10px', borderRadius: '4px', backgroundColor: 'rgba(74, 222, 128, 0.1)' }}>STATUS: SECURE LINK</div>
       </header>
 
-      {/* FIXED LAYOUT: 250px Left, Center dynamically fills, 280px Right */}
       <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr 280px', gap: '25px', flex: 1, alignItems: 'stretch' }}>
         
         {/* LEFT PANEL */}
@@ -426,8 +501,8 @@ export default function App() {
             <h2 style={{ color: radarMode === 'NAVY' ? '#38bdf8' : '#4ade80', fontSize: '13px', marginTop: 0, borderBottom: `1px solid ${radarMode === 'NAVY' ? '#0284c7' : '#14532d'}`, paddingBottom: '8px' }}>🛡️ ALLIED FORCES</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px', fontSize: '12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#94a3b8' }}>Unit:</span> <span style={{ color: radarMode === 'NAVY' ? '#38bdf8' : '#4ade80', fontWeight: 'bold' }}>1 ({radarMode === 'AIR' ? 'BLU-01 Jet' : 'Submarine'})</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#94a3b8' }}>Defenses:</span> <span style={{ color: radarMode === 'NAVY' ? '#38bdf8' : '#4ade80', fontWeight: 'bold' }}>{units.length} ({radarMode === 'AIR' ? 'Tanks' : 'Cruisers'})</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#94a3b8' }}>{radarMode === 'AIR' ? 'SAMs:' : 'Torpedo:'}</span> <span style={{ color: '#eab308', fontWeight: 'bold' }}>1 (Auto)</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#94a3b8' }}>Defenses:</span> <span style={{ color: radarMode === 'NAVY' ? '#38bdf8' : '#4ade80', fontWeight: 'bold' }}>{units.length} ({radarMode === 'AIR' ? 'SAM tanks' : 'Cruisers'})</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#94a3b8' }}>Auto SAM:</span> <span style={{ color: '#eab308', fontWeight: 'bold' }}>1 Active</span></div>
             </div>
           </div>
         </div>
@@ -436,8 +511,8 @@ export default function App() {
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <div style={{ flex: 1, minHeight: '600px', position: 'relative', border: '3px solid #334155', borderRadius: '12px', backgroundColor: '#020617', boxShadow: '0 0 40px rgba(0, 0, 0, 0.9)', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06))', backgroundSize: '100% 4px, 3px 100%', pointerEvents: 'none', zIndex: 10 }}></div>
-            {/* CANVAS WILL FILL AND SCALE CORRECTLY NOW */}
-            <canvas ref={canvasRef} width={1000} height={850} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }} />
+            {/* CANVAS WITH CROSSHAIR CURSOR WHEN MOUSE OVER RADAR AREA */}
+            <canvas ref={canvasRef} width={1000} height={850} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', cursor: priorityTargetId ? 'not-allowed' : 'crosshair' }} />
           </div>
         </div>
 
@@ -454,8 +529,13 @@ export default function App() {
                 {enemies.map(e => {
                   const dist = Math.hypot(e.x - basePos.x, e.y - basePos.y);
                   const isInside = dist <= radarRadius;
-                  const status = e.health <= 0 ? 'WRECKAGE' : (isInside ? 'LOCKED' : 'APPROACHING');
-                  const col = e.health <= 0 ? '#78350f' : (isInside ? '#f87171' : '#facc15');
+                  
+                  // Update status based on locking
+                  let status = e.health <= 0 ? 'WRECKAGE' : (isInside ? 'LOCKED' : 'APPROACHING');
+                  if (e.id === priorityTargetId) status = 'PRIORITY!!';
+                  
+                  // Dynamic color based on lock
+                  const col = e.id === priorityTargetId ? 'red' : (e.health <= 0 ? '#78350f' : (isInside ? '#f87171' : '#facc15'));
                   
                   return (
                     <div key={e.id} style={{ marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px dashed #7f1d1d' }}>
@@ -468,6 +548,9 @@ export default function App() {
                     </div>
                   );
                 })}
+                <div style={{ color: 'red', fontSize: '10px', marginTop: '10px', textAlign: 'center', borderTop: '1px dashed red', paddingTop: '5px' }}>
+                    COMMANDER: Click enemy to FORCE LOCK. Click empty space to CLEAR.
+                </div>
               </div>
             </div>
           </div>
