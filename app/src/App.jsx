@@ -7,9 +7,9 @@ export default function App() {
   const [baseHealth, setBaseHealth] = useState(100);
   const [score, setScore] = useState(0);
   
-  const basePos = { x: 500, y: 400 }; 
-  const radarRadius = 360; 
-  const [ownShip, setOwnShip] = useState({ x: 500, y: 460 });
+  const basePos = { x: 500, y: 425 }; 
+  const radarRadius = 380; 
+  const [ownShip, setOwnShip] = useState({ x: 500, y: 480 });
 
   const [enemies, setEnemies] = useState([
     { id: 'TRK-01', type: 'FIGHTER JET', x: 950, y: 50, health: 100, speed: 1.8, originalSpeed: 1.8, alt: 24000, deathTimer: 0 },
@@ -17,9 +17,8 @@ export default function App() {
     { id: 'BMB-03', type: 'HEAVY BOMBER', x: 900, y: 700, health: 100, speed: 0.7, originalSpeed: 0.7, alt: 32000, deathTimer: 0 }
   ]);
 
-  const units = [ { id: 'DEF-1', x: 440, y: 450 }, { id: 'DEF-2', x: 560, y: 450 } ];
-  const smallUnits = [ { id: 'MIN-1', x: 470, y: 470 }, { id: 'MIN-2', x: 490, y: 470 }, { id: 'MIN-3', x: 510, y: 470 }, { id: 'MIN-4', x: 530, y: 470 } ];
-
+  const units = [ { id: 'DEF-1', x: 440, y: 475 }, { id: 'DEF-2', x: 560, y: 475 } ];
+  
   const [missiles, setMissiles] = useState([]);
   const [flares, setFlares] = useState([]);
   const [explosions, setExplosions] = useState([]);
@@ -53,7 +52,7 @@ export default function App() {
   const deployFlare = () => { if (baseHealth > 0) setFlares(prev => [...prev, { x: ownShip.x, y: ownShip.y, life: 100 }]); };
 
   const handleReset = (newMode = radarMode) => {
-    setOwnShip({ x: 500, y: 460 });
+    setOwnShip({ x: 500, y: 480 });
     if (newMode === 'AIR') {
       setEnemies([
         { id: 'TRK-01', type: 'FIGHTER JET', x: 950, y: 50, health: 100, speed: 1.8, originalSpeed: 1.8, alt: 24000, deathTimer: 0 },
@@ -85,7 +84,7 @@ export default function App() {
     const loop = (time) => {
       if (time - lastTime > 30) {
         lastTime = time;
-        setOwnShip(p => ({ x: Math.max(20, Math.min(980, p.x + movementRef.current.dx)), y: Math.max(20, Math.min(780, p.y + movementRef.current.dy)) }));
+        setOwnShip(p => ({ x: Math.max(20, Math.min(980, p.x + movementRef.current.dx)), y: Math.max(20, Math.min(830, p.y + movementRef.current.dy)) }));
 
         const cx = basePos.x, cy = basePos.y;
 
@@ -96,20 +95,13 @@ export default function App() {
           setEnemies(prevEnemies => {
             let activeEnemies = prevEnemies.map(enemy => {
               
-              // CONTINUOUS THREAT PROTOCOL (Respawn after destroyed by SAM/Tanks)
+              // Continuous Threat Protocol
               if (enemy.health <= 0) {
                 const newTimer = enemy.deathTimer + 1;
-                if (newTimer > 80) { // Approx 2.5 seconds wait
+                if (newTimer > 80) { 
                   const angle = Math.random() * Math.PI * 2;
-                  const dist = radarRadius + 200 + Math.random() * 200; // Spawns outside radar
-                  return {
-                    ...enemy,
-                    x: cx + Math.cos(angle) * dist,
-                    y: cy + Math.sin(angle) * dist,
-                    health: 100,
-                    speed: enemy.originalSpeed, // Restores movement
-                    deathTimer: 0
-                  };
+                  const dist = radarRadius + 200 + Math.random() * 200;
+                  return { ...enemy, x: cx + Math.cos(angle) * dist, y: cy + Math.sin(angle) * dist, health: 100, speed: enemy.originalSpeed, deathTimer: 0 };
                 }
                 return { ...enemy, deathTimer: newTimer };
               }
@@ -223,7 +215,7 @@ export default function App() {
         ctx.fillStyle = '#0f172a'; ctx.fill(); 
         ctx.strokeStyle = '#334155'; ctx.lineWidth = 2; ctx.stroke();
         
-        ctx.font = '10px "Courier New", monospace';
+        ctx.font = '11px "Courier New", monospace';
         ctx.fillStyle = '#94a3b8'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         
         for(let i=0; i<360; i+= (isNavy ? 45 : 15)) {
@@ -294,7 +286,7 @@ export default function App() {
         ctx.restore(); // END MASK
 
         const drawTacticalText = (text, x, y, color, bold=false) => { 
-          ctx.fillStyle = color; ctx.font = `${bold ? 'bold ' : ''}10px "Courier New", monospace`; ctx.fillText(text, x, y); 
+          ctx.fillStyle = color; ctx.font = `${bold ? 'bold ' : ''}11px "Courier New", monospace`; ctx.fillText(text, x, y); 
         };
 
         ctx.beginPath(); ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 10, cy); ctx.stroke();
@@ -318,7 +310,6 @@ export default function App() {
         ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2; ctx.stroke();
         drawTacticalText(isNavy ? 'SUB-01' : 'BLU-01', ownShip.x + 10, ownShip.y - 5, '#60a5fa', true);
 
-        // ENEMIES
         enemies.forEach(enemy => {
           const distToCenter = Math.hypot(enemy.x - cx, enemy.y - cy);
           const isInsideRadar = distToCenter <= radarRadius;
@@ -403,36 +394,37 @@ export default function App() {
   const activeThreats = enemies.filter(e => e.health > 0 && Math.hypot(e.x - basePos.x, e.y - basePos.y) <= radarRadius).length;
 
   return (
-    <div style={{ backgroundColor: '#000000', color: 'white', minHeight: '100vh', padding: '15px', fontFamily: '"Courier New", monospace', backgroundImage: 'radial-gradient(circle, #0f172a 0%, #000000 90%)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ backgroundColor: '#000000', color: 'white', minHeight: '100vh', padding: '20px', fontFamily: '"Courier New", monospace', backgroundImage: 'radial-gradient(circle, #0f172a 0%, #000000 90%)', display: 'flex', flexDirection: 'column' }}>
       
-      <header style={{ borderBottom: '1px solid #38bdf8', paddingBottom: '10px', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexShrink: 0 }}>
-        <div><h1 style={{ color: '#38bdf8', margin: 0, fontSize: '24px', textShadow: '0 0 10px rgba(56, 189, 248, 0.4)' }}>COMMANDER'S TERMINAL // C4ISR SYSTEM</h1></div>
-        <div style={{ color: '#4ade80', fontSize: '12px', border: '1px solid #4ade80', padding: '4px 8px', borderRadius: '4px', backgroundColor: 'rgba(74, 222, 128, 0.1)' }}>STATUS: SECURE LINK</div>
+      <header style={{ borderBottom: '1px solid #38bdf8', paddingBottom: '10px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexShrink: 0 }}>
+        <div><h1 style={{ color: '#38bdf8', margin: 0, fontSize: '26px', textShadow: '0 0 10px rgba(56, 189, 248, 0.4)' }}>COMMANDER'S TERMINAL // C4ISR SYSTEM</h1></div>
+        <div style={{ color: '#4ade80', fontSize: '13px', border: '1px solid #4ade80', padding: '5px 10px', borderRadius: '4px', backgroundColor: 'rgba(74, 222, 128, 0.1)' }}>STATUS: SECURE LINK</div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr 250px', gap: '20px', flex: 1, alignItems: 'stretch' }}>
+      {/* FIXED LAYOUT: 250px Left, Center dynamically fills, 280px Right */}
+      <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr 280px', gap: '25px', flex: 1, alignItems: 'stretch' }}>
         
         {/* LEFT PANEL */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          <div style={{ backgroundColor: '#0f172a', padding: '15px', borderRadius: '6px', border: '1px solid #334155', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)' }}>
-            <h2 style={{ color: '#94a3b8', fontSize: '12px', marginTop: 0, marginBottom: '10px', borderBottom: '1px solid #1e293b', paddingBottom: '5px' }}>SYS CONTROLS</h2>
-            <button onClick={toggleMode} style={{ width: '100%', padding: '10px', marginBottom: '12px', backgroundColor: radarMode === 'NAVY' ? '#082f49' : '#022c11', color: radarMode === 'NAVY' ? '#7dd3fc' : '#86efac', border: '1px solid ' + (radarMode === 'NAVY' ? '#0ea5e9' : '#22c55e'), borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '8px', border: '1px solid #334155', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)' }}>
+            <h2 style={{ color: '#94a3b8', fontSize: '13px', marginTop: 0, marginBottom: '15px', borderBottom: '1px solid #1e293b', paddingBottom: '8px' }}>SYS CONTROLS</h2>
+            <button onClick={toggleMode} style={{ width: '100%', padding: '12px', marginBottom: '15px', backgroundColor: radarMode === 'NAVY' ? '#082f49' : '#022c11', color: radarMode === 'NAVY' ? '#7dd3fc' : '#86efac', border: '1px solid ' + (radarMode === 'NAVY' ? '#0ea5e9' : '#22c55e'), borderRadius: '4px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>
               {radarMode === 'AIR' ? '✈️ AIR RADAR MODE' : '🌊 NAVAL SONAR MODE'}
             </button>
-            <button onClick={() => setIsAIActive(!isAIActive)} style={{ width: '100%', padding: '10px', marginBottom: '8px', backgroundColor: isAIActive ? '#7f1d1d' : '#1e293b', color: isAIActive ? '#fca5a5' : '#cbd5e1', border: '1px solid ' + (isAIActive ? '#ef4444' : '#475569'), borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>
+            <button onClick={() => setIsAIActive(!isAIActive)} style={{ width: '100%', padding: '12px', marginBottom: '10px', backgroundColor: isAIActive ? '#7f1d1d' : '#1e293b', color: isAIActive ? '#fca5a5' : '#cbd5e1', border: '1px solid ' + (isAIActive ? '#ef4444' : '#475569'), borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
               {isAIActive ? 'HALT TRACKING' : 'INITIATE TRACKING'}
             </button>
-            <button onClick={() => handleReset(radarMode)} style={{ width: '100%', padding: '10px', backgroundColor: '#1e293b', color: '#cbd5e1', border: '1px solid #475569', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>RESET FIELD</button>
+            <button onClick={() => handleReset(radarMode)} style={{ width: '100%', padding: '12px', backgroundColor: '#1e293b', color: '#cbd5e1', border: '1px solid #475569', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>RESET FIELD</button>
           </div>
 
-          <div style={{ backgroundColor: '#1e1b4b', border: '1px solid #6366f1', padding: '12px', borderRadius: '6px' }}>
-            <div style={{ color: '#818cf8', fontSize: '11px', fontWeight: 'bold', marginBottom: '6px' }}>AI ADVISORY</div>
-            <div style={{ color: '#e0e7ff', fontSize: '12px', lineHeight: '1.4' }}>{advisorText}</div>
+          <div style={{ backgroundColor: '#1e1b4b', border: '1px solid #6366f1', padding: '15px', borderRadius: '8px' }}>
+            <div style={{ color: '#818cf8', fontSize: '12px', fontWeight: 'bold', marginBottom: '8px' }}>AI ADVISORY</div>
+            <div style={{ color: '#e0e7ff', fontSize: '13px', lineHeight: '1.5' }}>{advisorText}</div>
           </div>
 
-          <div style={{ backgroundColor: radarMode === 'NAVY' ? 'rgba(8, 47, 73, 0.4)' : 'rgba(20, 83, 45, 0.1)', padding: '12px', border: `1px solid ${radarMode === 'NAVY' ? '#0ea5e9' : '#14532d'}`, borderRadius: '6px' }}>
-            <h2 style={{ color: radarMode === 'NAVY' ? '#38bdf8' : '#4ade80', fontSize: '12px', marginTop: 0, borderBottom: `1px solid ${radarMode === 'NAVY' ? '#0284c7' : '#14532d'}`, paddingBottom: '6px' }}>🛡️ ALLIED FORCES</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px', fontSize: '11px' }}>
+          <div style={{ backgroundColor: radarMode === 'NAVY' ? 'rgba(8, 47, 73, 0.4)' : 'rgba(20, 83, 45, 0.1)', padding: '15px', border: `1px solid ${radarMode === 'NAVY' ? '#0ea5e9' : '#14532d'}`, borderRadius: '8px' }}>
+            <h2 style={{ color: radarMode === 'NAVY' ? '#38bdf8' : '#4ade80', fontSize: '13px', marginTop: 0, borderBottom: `1px solid ${radarMode === 'NAVY' ? '#0284c7' : '#14532d'}`, paddingBottom: '8px' }}>🛡️ ALLIED FORCES</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px', fontSize: '12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#94a3b8' }}>Unit:</span> <span style={{ color: radarMode === 'NAVY' ? '#38bdf8' : '#4ade80', fontWeight: 'bold' }}>1 ({radarMode === 'AIR' ? 'BLU-01 Jet' : 'Submarine'})</span></div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#94a3b8' }}>Defenses:</span> <span style={{ color: radarMode === 'NAVY' ? '#38bdf8' : '#4ade80', fontWeight: 'bold' }}>{units.length} ({radarMode === 'AIR' ? 'Tanks' : 'Cruisers'})</span></div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#94a3b8' }}>{radarMode === 'AIR' ? 'SAMs:' : 'Torpedo:'}</span> <span style={{ color: '#eab308', fontWeight: 'bold' }}>1 (Auto)</span></div>
@@ -441,23 +433,24 @@ export default function App() {
         </div>
 
         {/* CENTER WIDESCREEN RADAR */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', height: '100%' }}>
-          <div style={{ flex: 1, position: 'relative', border: '2px solid #334155', borderRadius: '8px', backgroundColor: '#020617', boxShadow: '0 0 40px rgba(0, 0, 0, 0.9)', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ flex: 1, minHeight: '600px', position: 'relative', border: '3px solid #334155', borderRadius: '12px', backgroundColor: '#020617', boxShadow: '0 0 40px rgba(0, 0, 0, 0.9)', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06))', backgroundSize: '100% 4px, 3px 100%', pointerEvents: 'none', zIndex: 10 }}></div>
+            {/* CANVAS WILL FILL AND SCALE CORRECTLY NOW */}
             <canvas ref={canvasRef} width={1000} height={850} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
         </div>
 
         {/* RIGHT PANEL - ENEMY TELEMETRY DASHBOARD */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          <div style={{ backgroundColor: 'rgba(127, 29, 29, 0.1)', padding: '12px', border: '1px solid #7f1d1d', borderRadius: '6px' }}>
-            <h2 style={{ color: '#ef4444', fontSize: '12px', marginTop: 0, borderBottom: '1px solid #7f1d1d', paddingBottom: '6px' }}>⚠️ THREAT {radarMode === 'AIR' ? 'RADAR' : 'SONAR'}</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px', fontSize: '11px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{ backgroundColor: 'rgba(127, 29, 29, 0.1)', padding: '15px', border: '1px solid #7f1d1d', borderRadius: '8px' }}>
+            <h2 style={{ color: '#ef4444', fontSize: '13px', marginTop: 0, borderBottom: '1px solid #7f1d1d', paddingBottom: '8px' }}>⚠️ THREAT {radarMode === 'AIR' ? 'RADAR' : 'SONAR'}</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px', fontSize: '12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#fca5a5' }}>Threat:</span> <span style={{ color: activeThreats > 0 ? '#ef4444' : '#4ade80', fontWeight: 'bold' }}>{activeThreats > 0 ? 'ACTIVE' : 'CLEAR'}</span></div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#fca5a5' }}>Tracking:</span> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{activeThreats} / 3</span></div>
               
-              <div style={{ backgroundColor: '#451a1a', padding: '10px', borderRadius: '4px', marginTop: '5px' }}>
-                <div style={{ color: '#fca5a5', fontSize: '10px', fontWeight: 'bold', marginBottom: '8px' }}>TARGET TELEMETRY</div>
+              <div style={{ backgroundColor: '#451a1a', padding: '12px', borderRadius: '6px', marginTop: '8px' }}>
+                <div style={{ color: '#fca5a5', fontSize: '11px', fontWeight: 'bold', marginBottom: '10px' }}>TARGET TELEMETRY</div>
                 {enemies.map(e => {
                   const dist = Math.hypot(e.x - basePos.x, e.y - basePos.y);
                   const isInside = dist <= radarRadius;
@@ -465,11 +458,11 @@ export default function App() {
                   const col = e.health <= 0 ? '#78350f' : (isInside ? '#f87171' : '#facc15');
                   
                   return (
-                    <div key={e.id} style={{ marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px dashed #7f1d1d' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: col, fontWeight: 'bold' }}>
+                    <div key={e.id} style={{ marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px dashed #7f1d1d' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: col, fontWeight: 'bold' }}>
                         <span>{e.id} [{e.type}]</span> <span>{status}</span>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: '#fca5a5', marginTop: '4px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#fca5a5', marginTop: '5px' }}>
                         <span>Spd: MACH {e.speed.toFixed(1)}</span> <span>HP: {e.health}%</span>
                       </div>
                     </div>
@@ -479,16 +472,16 @@ export default function App() {
             </div>
           </div>
 
-          <div style={{ backgroundColor: '#0f172a', padding: '12px', border: '1px solid #1e293b', borderRadius: '6px' }}>
-            <h2 style={{ color: '#38bdf8', fontSize: '12px', marginTop: 0, borderBottom: '1px solid #1e293b', paddingBottom: '6px' }}>📊 LIVE METRICS</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px' }}>
-              <div style={{ backgroundColor: '#1e293b', padding: '10px', borderRadius: '4px', borderLeft: '3px solid #22c55e' }}>
-                <div style={{ color: '#94a3b8', fontSize: '10px' }}>HIT PROBABILITY</div>
-                <div style={{ fontSize: '20px', color: hitProbability > 70 ? '#4ade80' : hitProbability > 40 ? '#facc15' : '#ef4444', fontWeight: 'bold' }}>{hitProbability}%</div>
+          <div style={{ backgroundColor: '#0f172a', padding: '15px', border: '1px solid #1e293b', borderRadius: '8px' }}>
+            <h2 style={{ color: '#38bdf8', fontSize: '13px', marginTop: 0, borderBottom: '1px solid #1e293b', paddingBottom: '8px' }}>📊 LIVE METRICS</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
+              <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '6px', borderLeft: '4px solid #22c55e' }}>
+                <div style={{ color: '#94a3b8', fontSize: '11px' }}>HIT PROBABILITY</div>
+                <div style={{ fontSize: '24px', color: hitProbability > 70 ? '#4ade80' : hitProbability > 40 ? '#facc15' : '#ef4444', fontWeight: 'bold', marginTop: '4px' }}>{hitProbability}%</div>
               </div>
-              <div style={{ backgroundColor: '#1e293b', padding: '10px', borderRadius: '4px', borderLeft: '3px solid #38bdf8' }}>
-                <div style={{ color: '#94a3b8', fontSize: '10px' }}>HQ INTEGRITY</div>
-                <div style={{ fontSize: '18px', color: baseHealth > 30 ? '#38bdf8' : '#ef4444', fontWeight: 'bold' }}>{Math.floor(baseHealth)}%</div>
+              <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '6px', borderLeft: '4px solid #38bdf8' }}>
+                <div style={{ color: '#94a3b8', fontSize: '11px' }}>HQ INTEGRITY</div>
+                <div style={{ fontSize: '20px', color: baseHealth > 30 ? '#38bdf8' : '#ef4444', fontWeight: 'bold', marginTop: '4px' }}>{Math.floor(baseHealth)}%</div>
               </div>
             </div>
           </div>
