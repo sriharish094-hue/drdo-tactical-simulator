@@ -38,7 +38,7 @@ const spawnContact = (isNavy) => {
     trueIff: trueIff,
     displayIff: 'UNKNOWN',
     isStealth: isStealth,
-    authorized: false, // NEW: Requires Commander Authorization to attack
+    authorized: false,
     x: startX,
     y: startY,
     vx: Math.cos(targetAngle) * speed,
@@ -53,7 +53,7 @@ const spawnContact = (isNavy) => {
 
 export default function App() {
   const canvasRef = useRef(null);
-  const [isAIActive, setIsAIActive] = useState(false); // Master Arm Switch
+  const [isAIActive, setIsAIActive] = useState(false); 
   const [radarMode, setRadarMode] = useState('AIR'); 
   
   const logicalWidth = 1000;
@@ -74,17 +74,37 @@ export default function App() {
   
   const lastAutoFire = useRef(0);
   const casualtyTimer = useRef(0); 
+  const stormRef = useRef({ x: basePos.x, y: basePos.y - 150, radius: 120 });
   const [explosions, setExplosions] = useState([]);
-  const [advisorText, setAdvisorText] = useState('SYSTEM SAFE. AWAITING COMMANDER DIRECTIVE.');
+  
+  // NEW: DEDICATED AI LOG SYSTEM
+  const [logs, setLogs] = useState([
+    { id: 1, time: new Date().toLocaleTimeString('en-US', { hour12: false }), sender: 'SYSTEM', text: 'C4ISR AI ADVISORY TERMINAL ONLINE.', type: 'info' }
+  ]);
+  const logsEndRef = useRef(null);
+  const seenContacts = useRef({}); // Prevents spamming warnings for the same contact
 
-  // Mouse Interaction: Commander Authorization (Click to Authorize)
+  const addLog = (sender, text, type = 'info') => {
+    const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+    setLogs(prev => {
+        const newLogs = [...prev, { id: Math.random(), time, sender, text, type }];
+        return newLogs.slice(-50); // Keep only last 50 logs to prevent memory issues
+    });
+  };
+
+  useEffect(() => {
+    if (logsEndRef.current) {
+        logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs]);
+
+  // Mouse Interaction (Click to Identify & Authorize)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const handleCanvasClick = (e) => {
       const rect = canvas.getBoundingClientRect();
-      // Calculate based on the LOGICAL 1000x850 space, ignoring Retina scale
       const scaleX = logicalWidth / rect.width;
       const scaleY = logicalHeight / rect.height;
       const mouseX = (e.clientX - rect.left) * scaleX;
@@ -104,20 +124,44 @@ export default function App() {
       });
 
       if (clickedTargetId) {
+          const contact = contacts.find(c => c.id === clickedTargetId);
           setContacts(prev => prev.map(c => 
             c.id === clickedTargetId ? { ...c, displayIff: c.trueIff, type: c.trueIff === 'HOSTILE' ? (c.isStealth ? 'STEALTH DRONE' : c.type) : c.type, authorized: true } : c
           ));
           setPriorityTargetId(clickedTargetId);
-          setAdvisorText(`⚠️ COMMANDER OVERRIDE: LETHAL FORCE AUTHORIZED FOR ${clickedTargetId}.`);
+          
+          // AI ADVISORY LOGIC ON COMMANDER CLICK
+          if (contact && !contact.authorized) {
+              addLog('COMMANDER', `Interrogating target ${contact.id}...`, 'cmd');
+              setTimeout(() => {
+                  if (contact.trueIff === 'HOSTILE') {
+                      addLog('AI ADVISOR', `THREAT IDENTIFIED! Hostile ${contact.isStealth ? 'STEALTH' : ''} ${contact.type}.`, 'alert');
+                      addLog('AI ADVISOR', `TELEMETRY: Power/Speed is ${Math.floor(contact.speed * 200)} KTS. Approaching from Heading ${Math.floor(contact.hdg)}°.`, 'info');
+                      
+                      // Dynamic Tactical Recommendations
+                      let rec = 'Authorize standard SAM engagement.';
+                      if (radarMode === 'NAVY') {
+                         if (contact.type.includes('SUB')) rec = 'Submerged threat. Deploy Anti-Submarine (ASW) Helicopters/Drones!';
+                         else rec = 'Surface threat. Engage with Harpoon missiles!';
+                      } else {
+                         if (contact.speed > 1.2) rec = 'Supersonic threat detected. Scramble Interceptor Aircraft immediately!';
+                         else if (contact.isStealth) rec = 'EW Jamming detected. Send recon Drones for visual confirmation!';
+                         else if (contact.type.includes('BOMBER')) rec = 'Heavy payload threat. Intercept with Fighter Squadron!';
+                      }
+                      addLog('AI ADVISOR', `TACTICAL RECOMMENDATION: ${rec}`, 'suggest');
+                  } else if (contact.trueIff === 'CIVILIAN') {
+                      addLog('AI ADVISOR', `Verified as CIVILIAN Commercial Flight. DO NOT ENGAGE.`, 'safe');
+                  }
+              }, 500);
+          }
       } else {
           setPriorityTargetId(null);
-          setAdvisorText(`FIRE CONTROL: LOCK CLEARED. SEARCH RADAR SWEEPING.`);
       }
     };
 
     canvas.addEventListener('click', handleCanvasClick);
     return () => canvas.removeEventListener('click', handleCanvasClick);
-  }, [contacts]);
+  }, [contacts, radarMode]);
 
   const handleReset = (newMode = radarMode) => {
     setPriorityTargetId(null);
@@ -125,8 +169,9 @@ export default function App() {
     setExplosions([]);
     setScore(0);
     casualtyTimer.current = 0;
+    seenContacts.current = {};
     setContacts([spawnContact(newMode === 'NAVY'), spawnContact(newMode === 'NAVY'), spawnContact(newMode === 'NAVY'), spawnContact(newMode === 'NAVY')]);
-    setAdvisorText(`${newMode === 'AIR' ? 'AIR EARLY WARNING' : 'NAVAL SONAR SEARCH'} INITIALIZED.`);
+    addLog('SYSTEM', `${newMode === 'AIR' ? 'AIR EARLY WARNING' : 'NAVAL SONAR SEARCH'} INITIALIZED.`, 'info');
   };
 
   const toggleMode = () => {
@@ -146,6 +191,9 @@ export default function App() {
         const sweepSpeed = radarMode === 'AIR' ? 1200 : 2500;
         const sweepAngle = (Date.now() / sweepSpeed) % (Math.PI * 2);
 
+        stormRef.current.x = basePos.x - 100 + Math.sin(Date.now() / 10000) * 200;
+        stormRef.current.y = basePos.y - 50 + Math.cos(Date.now() / 15000) * 150;
+
         setContacts(prevContacts => {
           let updatedContacts = prevContacts.map(contact => {
             if (contact.status === 'DESTROYED') {
@@ -153,27 +201,32 @@ export default function App() {
               if (newTimer > 60) return spawnContact(radarMode === 'NAVY');
               return { ...contact, deathTimer: newTimer };
             }
-
             let newX = contact.x + contact.vx;
             let newY = contact.y + contact.vy;
-
             if (Math.hypot(newX - basePos.x, newY - basePos.y) > 700) {
                 return spawnContact(radarMode === 'NAVY');
             }
-
             return { ...contact, x: newX, y: newY };
+          });
+
+          // RADAR TEAM WARNING LOGIC
+          updatedContacts.forEach(c => {
+             const dist = Math.hypot(c.x - basePos.x, c.y - basePos.y);
+             if (dist <= radarRadius && c.status === 'ACTIVE' && !seenContacts.current[c.id]) {
+                 seenContacts.current[c.id] = true;
+                 // Timeout used to safely update state outside the fast render loop
+                 setTimeout(() => {
+                     addLog('RADAR TEAM', `Unknown contact ${c.id} entering airspace. Transmitting [WARN TX] on Guard Frequency.`, 'warn');
+                 }, 0);
+             }
           });
 
           // FIRE CONTROL LOGIC
           setInterceptors(prevInterceptors => {
             let newInterceptors = [...prevInterceptors];
             
-            // NEW RULES OF ENGAGEMENT: Target MUST be manually Authorized!
             const activeContacts = updatedContacts.filter(c => 
-              c.status === 'ACTIVE' && 
-              c.displayIff !== 'CIVILIAN' &&
-              c.authorized === true && // Commander must have clicked it
-              Math.hypot(c.x - basePos.x, c.y - basePos.y) <= radarRadius
+              c.status === 'ACTIVE' && c.displayIff !== 'CIVILIAN' && c.authorized === true && Math.hypot(c.x - basePos.x, c.y - basePos.y) <= radarRadius
             );
             
             if (isAIActive && activeContacts.length > 0) {
@@ -187,15 +240,12 @@ export default function App() {
                 }, { battery: samBatteries[0], dist: 9999 }).battery;
 
                 newInterceptors.push({ 
-                    x: closestBattery.x, 
-                    y: closestBattery.y, 
-                    speed: 20, 
-                    targetId: targetContact.id,
-                    source: closestBattery.id
+                    x: closestBattery.x, y: closestBattery.y, speed: 20, 
+                    targetId: targetContact.id, source: closestBattery.id
                 });
                 
                 lastAutoFire.current = Date.now();
-                setAdvisorText(`💥 LAUNCH: ${closestBattery.id} BATTERY FIRED AT ${targetContact.id}`);
+                setTimeout(() => addLog('SYSTEM', `LAUNCH DETECTED: ${closestBattery.id} FIRED AT ${targetContact.id}`, 'info'), 0);
               }
             }
 
@@ -208,8 +258,10 @@ export default function App() {
                 if (tEnemy.trueIff === 'CIVILIAN') {
                     casualtyTimer.current = 150; 
                     setScore(s => s - 1000);
+                    setTimeout(() => addLog('SYSTEM', `CRITICAL: CIVILIAN CASUALTY. PROTOCOL BREACH.`, 'alert'), 0);
                 } else {
                     setScore(s => s + 150);
+                    setTimeout(() => addLog('RADAR TEAM', `Target ${tEnemy.id} destroyed. Good hit.`, 'safe'), 0);
                 }
                 updatedContacts = updatedContacts.map(c => c.id === tEnemy.id ? { ...c, status: 'DESTROYED', vx: 0, vy: 0, deathTimer: 0, displayIff: c.trueIff } : c);
                 setExplosions(ex => [...ex, { x: tEnemy.x, y: tEnemy.y, life: 15 }]);
@@ -224,7 +276,7 @@ export default function App() {
         setExplosions(prev => prev.map(e => ({ ...e, life: e.life - 1 })).filter(e => e.life > 0));
       }
 
-      // --- CANVAS DRAWING WITH HIGH-DPI RETINA SCALING FIX ---
+      // --- CANVAS DRAWING ---
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext('2d');
@@ -238,10 +290,11 @@ export default function App() {
         const textColor = isNavy ? '#38bdf8' : '#4ade80';
 
         ctx.save();
-        ctx.scale(2, 2); // Scales internal drawing by 2x to fix blur!
+        ctx.scale(2, 2); 
 
         ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, logicalWidth, logicalHeight);
 
+        // BEZEL
         ctx.beginPath(); ctx.arc(cx, cy, radarRadius + 25, 0, Math.PI * 2);
         ctx.fillStyle = '#0f172a'; ctx.fill(); 
         ctx.strokeStyle = '#334155'; ctx.lineWidth = 2; ctx.stroke();
@@ -272,6 +325,15 @@ export default function App() {
         ctx.beginPath(); ctx.arc(cx, cy, radarRadius, 0, Math.PI * 2); ctx.clip();
         ctx.fillStyle = radarBgColor; ctx.fill();
 
+        ctx.beginPath();
+        ctx.moveTo(cx - 300, cy - 400);
+        ctx.bezierCurveTo(cx - 100, cy - 200, cx + 50, cy + 100, cx + 400, cy - 50);
+        ctx.lineTo(cx + 400, cy + 400); ctx.lineTo(cx - 400, cy + 400);
+        ctx.closePath();
+        ctx.fillStyle = isNavy ? 'rgba(8, 47, 73, 0.4)' : 'rgba(20, 83, 45, 0.2)'; ctx.fill();
+        ctx.strokeStyle = isNavy ? 'rgba(14, 165, 233, 0.2)' : 'rgba(34, 197, 94, 0.2)';
+        ctx.lineWidth = 2; ctx.stroke();
+
         ctx.strokeStyle = radarLineColor; ctx.lineWidth = 1;
         if (!isNavy) {
           for (let i=0; i<360; i+=30) {
@@ -293,6 +355,14 @@ export default function App() {
         
         ctx.beginPath(); ctx.arc(cx, cy, 120, 0, Math.PI * 2);
         ctx.strokeStyle = 'rgba(250, 204, 21, 0.3)'; ctx.setLineDash([2, 4]); ctx.stroke(); ctx.setLineDash([]);
+
+        const sX = stormRef.current.x;
+        const sY = stormRef.current.y;
+        const sR = stormRef.current.radius;
+        ctx.beginPath(); ctx.arc(sX, sY, sR, 0, Math.PI*2);
+        ctx.fillStyle = isNavy ? 'rgba(56, 189, 248, 0.05)' : 'rgba(148, 163, 184, 0.1)'; ctx.fill();
+        ctx.strokeStyle = isNavy ? 'rgba(56, 189, 248, 0.1)' : 'rgba(148, 163, 184, 0.2)';
+        ctx.setLineDash([10, 10]); ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
 
         if (isNavy && isAIActive) {
           const pingProgress = (Date.now() % 2500) / 2500;
@@ -322,8 +392,9 @@ export default function App() {
         ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2); ctx.strokeStyle = textColor; ctx.lineWidth = 1; ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, cy - 10); ctx.stroke();
         drawTacticalText(`EW-RADAR`, cx + 10, cy - 5, isNavy ? '#0ea5e9' : '#38bdf8', true);
+        
+        drawTacticalText(`WX: STORM CELL`, sX - 40, sY, isNavy ? '#38bdf8' : '#94a3b8');
 
-        // LAUNCHERS
         samBatteries.forEach(bat => {
             ctx.beginPath(); ctx.rect(bat.x - 5, bat.y - 5, 10, 10);
             ctx.fillStyle = 'rgba(74, 222, 128, 0.2)'; ctx.fill();
@@ -335,13 +406,15 @@ export default function App() {
             drawTacticalText(bat.id, bat.x - 25, bat.y + 15, '#94a3b8');
         });
 
-        // CONTACTS
         contacts.forEach(contact => {
           const distToCenter = Math.hypot(contact.x - cx, contact.y - cy);
           if (distToCenter > radarRadius) return;
 
           const isActive = contact.status === 'ACTIVE';
-          const isJamming = contact.isStealth && !contact.authorized && isActive; 
+          const isMarked = contact.id === priorityTargetId;
+          const distToStorm = Math.hypot(contact.x - sX, contact.y - sY);
+          const isWeatherJammed = distToStorm < sR && isActive;
+          const isJamming = (contact.isStealth && !contact.authorized && isActive) || isWeatherJammed; 
           
           let color = '#475569';
           if (isActive) {
@@ -367,7 +440,7 @@ export default function App() {
 
           if (isActive) {
             ctx.beginPath();
-            if (contact.authorized) {
+            if (contact.authorized && !isWeatherJammed) {
                 ctx.rotate(Date.now()/500);
                 ctx.moveTo(-15, 0); ctx.lineTo(15, 0); ctx.moveTo(0, -15); ctx.lineTo(0, 15);
                 ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
@@ -391,17 +464,16 @@ export default function App() {
             ctx.beginPath(); ctx.moveTo(contact.x + 10, contact.y - 10); ctx.lineTo(contact.x + 20, contact.y - 20); ctx.lineTo(contact.x + 40, contact.y - 20); 
             ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
             
-            let displayName = isJamming ? 'ERR: JAMMING' : contact.id;
+            let displayName = isJamming ? (isWeatherJammed ? 'WX CLUTTER' : 'ERR: JAMMING') : contact.id;
             drawTacticalText(`${displayName}`, contact.x + 45, contact.y - 25, isJamming ? '#ef4444' : color, true);
             drawTacticalText(`HDG: ${isJamming ? '---' : Math.floor(contact.hdg) + '°'}`, contact.x + 45, contact.y - 13, '#94a3b8');
             drawTacticalText(`SPD: ${isJamming ? '---' : Math.floor(contact.speed * 200)}`, contact.x + 45, contact.y - 3, '#94a3b8');
             
-            // NEW RULES OF ENGAGEMENT UI WARNING
             if (!isJamming) {
                 if (contact.authorized) {
-                    drawTacticalText(`[ENGAGE AUTH]`, contact.x + 45, contact.y + 10, '#ef4444', true); // Red Authorized tag
+                    drawTacticalText(`[ENGAGE AUTH]`, contact.x + 45, contact.y + 10, '#ef4444', true); 
                 } else {
-                    drawTacticalText(`[WARN TX]`, contact.x + 45, contact.y + 10, '#facc15', true); // Yellow Warning Transmitted tag
+                    drawTacticalText(`[WARN TX]`, contact.x + 45, contact.y + 10, '#facc15', true); 
                 }
             }
           } else {
@@ -409,7 +481,6 @@ export default function App() {
           }
         });
 
-        // MISSILES
         interceptors.forEach(inter => { 
             ctx.beginPath(); ctx.arc(inter.x, inter.y, 2, 0, Math.PI * 2); 
             ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.shadowBlur = 5; ctx.shadowColor = '#ffffff';
@@ -433,7 +504,7 @@ export default function App() {
             casualtyTimer.current--;
         }
         
-        ctx.restore(); // END HIGH-DPI SCALING
+        ctx.restore(); 
       }
       animationFrameId = requestAnimationFrame(loop);
     };
@@ -444,70 +515,63 @@ export default function App() {
   const activeThreats = contacts.filter(c => c.status === 'ACTIVE' && Math.hypot(c.x - basePos.x, c.y - basePos.y) <= radarRadius);
 
   return (
-    <div style={{ backgroundColor: '#000000', color: 'white', minHeight: '100vh', padding: '20px', fontFamily: '"Courier New", monospace', backgroundImage: 'radial-gradient(circle, #0f172a 0%, #000000 90%)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ backgroundColor: '#020617', color: 'white', minHeight: '100vh', padding: '15px', fontFamily: '"Courier New", monospace', display: 'flex', flexDirection: 'column' }}>
       
-      <header style={{ borderBottom: '1px solid #38bdf8', paddingBottom: '10px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexShrink: 0 }}>
-        <div><h1 style={{ color: '#38bdf8', margin: 0, fontSize: '26px', textShadow: '0 0 10px rgba(56, 189, 248, 0.4)' }}>C4ISR // TACTICAL AIR DEFENSE SYSTEM</h1></div>
-        <div style={{ color: '#4ade80', fontSize: '13px', border: '1px solid #4ade80', padding: '5px 10px', borderRadius: '4px', backgroundColor: 'rgba(74, 222, 128, 0.1)' }}>LINK: SECURE</div>
+      <header style={{ borderBottom: '1px solid #38bdf8', paddingBottom: '10px', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexShrink: 0 }}>
+        <div><h1 style={{ color: '#38bdf8', margin: 0, fontSize: '24px', textShadow: '0 0 10px rgba(56, 189, 248, 0.4)' }}>C4ISR // TACTICAL AIR DEFENSE SYSTEM</h1></div>
+        <div style={{ color: '#4ade80', fontSize: '12px', border: '1px solid #4ade80', padding: '5px 10px', borderRadius: '4px', backgroundColor: 'rgba(74, 222, 128, 0.1)' }}>LINK: SECURE</div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr 280px', gap: '25px', flex: 1, alignItems: 'stretch' }}>
+      {/* TOP SECTION: Controls, Radar, Score */}
+      <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr 280px', gap: '20px', flex: 1, minHeight: '550px' }}>
         
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '8px', border: '1px solid #334155', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)' }}>
-            <h2 style={{ color: '#94a3b8', fontSize: '13px', marginTop: 0, marginBottom: '15px', borderBottom: '1px solid #1e293b', paddingBottom: '8px' }}>SYS CONTROLS</h2>
-            <button onClick={toggleMode} style={{ width: '100%', padding: '12px', marginBottom: '15px', backgroundColor: radarMode === 'NAVY' ? '#082f49' : '#022c11', color: radarMode === 'NAVY' ? '#7dd3fc' : '#86efac', border: '1px solid ' + (radarMode === 'NAVY' ? '#0ea5e9' : '#22c55e'), borderRadius: '4px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>
+        {/* LEFT PANEL */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          <div style={{ backgroundColor: '#0f172a', padding: '15px', borderRadius: '8px', border: '1px solid #334155', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)' }}>
+            <h2 style={{ color: '#94a3b8', fontSize: '12px', marginTop: 0, marginBottom: '10px', borderBottom: '1px solid #1e293b', paddingBottom: '5px' }}>SYS CONTROLS</h2>
+            <button onClick={toggleMode} style={{ width: '100%', padding: '10px', marginBottom: '10px', backgroundColor: radarMode === 'NAVY' ? '#082f49' : '#022c11', color: radarMode === 'NAVY' ? '#7dd3fc' : '#86efac', border: '1px solid ' + (radarMode === 'NAVY' ? '#0ea5e9' : '#22c55e'), borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
               {radarMode === 'AIR' ? '✈️ AIR RADAR' : '🌊 NAVAL SONAR'}
             </button>
-            <button onClick={() => setIsAIActive(!isAIActive)} style={{ width: '100%', padding: '12px', marginBottom: '10px', backgroundColor: isAIActive ? '#7f1d1d' : '#1e293b', color: isAIActive ? '#fca5a5' : '#cbd5e1', border: '1px solid ' + (isAIActive ? '#ef4444' : '#475569'), borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
+            <button onClick={() => setIsAIActive(!isAIActive)} style={{ width: '100%', padding: '10px', marginBottom: '10px', backgroundColor: isAIActive ? '#7f1d1d' : '#1e293b', color: isAIActive ? '#fca5a5' : '#cbd5e1', border: '1px solid ' + (isAIActive ? '#ef4444' : '#475569'), borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>
               {isAIActive ? 'MASTER ARM: SAFE' : 'MASTER ARM: READY'}
             </button>
-            <button onClick={() => handleReset(radarMode)} style={{ width: '100%', padding: '12px', backgroundColor: '#1e293b', color: '#cbd5e1', border: '1px solid #475569', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>CLEAR SCOPE</button>
+            <button onClick={() => handleReset(radarMode)} style={{ width: '100%', padding: '10px', backgroundColor: '#1e293b', color: '#cbd5e1', border: '1px solid #475569', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>CLEAR SCOPE</button>
           </div>
 
-          <div style={{ backgroundColor: '#1e1b4b', border: '1px solid #6366f1', padding: '15px', borderRadius: '8px' }}>
-            <div style={{ color: '#818cf8', fontSize: '12px', fontWeight: 'bold', marginBottom: '8px' }}>RULES OF ENGAGEMENT</div>
-            <div style={{ color: '#e0e7ff', fontSize: '12px', lineHeight: '1.5' }}>
-              Targets are issued [WARN TX]. 
-              Commander MUST click target to authorize [ENGAGE AUTH]. Auto-SAM will not fire unless authorized!
-            </div>
-            <div style={{ color: '#fca5a5', fontSize: '11px', marginTop: '10px', fontStyle: 'italic' }}>{advisorText}</div>
-          </div>
-          
           <div style={{ backgroundColor: 'rgba(34, 211, 238, 0.1)', border: '1px solid #0891b2', padding: '15px', borderRadius: '8px' }}>
             <div style={{ color: '#22d3ee', fontSize: '12px', fontWeight: 'bold', marginBottom: '8px' }}>RADAR LEGEND</div>
             <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: '1.6' }}>
-                <span style={{color: '#facc15'}}>🟡 UNKNOWN:</span> Needs Verification<br/>
+                <span style={{color: '#facc15'}}>🟡 UNKNOWN:</span> Wait for Auth<br/>
                 <span style={{color: '#ef4444'}}>🔴 HOSTILE:</span> Enemy Threat<br/>
-                <span style={{color: '#22d3ee'}}>🔵 CIVILIAN:</span> No Engage Zone<br/>
-                <span style={{color: '#4ade80'}}>🟩 TEL:</span> SAM Battery Launcher
+                <span style={{color: '#22d3ee'}}>🔵 CIVILIAN:</span> No Engage<br/>
+                <span style={{color: '#a1a1aa'}}>✖️ JAMMING:</span> Stealth / Storm<br/>
             </div>
           </div>
         </div>
 
+        {/* CENTER WIDESCREEN RADAR */}
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <div style={{ flex: 1, minHeight: '600px', position: 'relative', border: '3px solid #334155', borderRadius: '12px', backgroundColor: '#020617', boxShadow: '0 0 40px rgba(0, 0, 0, 0.9)', overflow: 'hidden' }}>
+          <div style={{ flex: 1, position: 'relative', border: '3px solid #334155', borderRadius: '12px', backgroundColor: '#020617', boxShadow: '0 0 30px rgba(0, 0, 0, 0.8)', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06))', backgroundSize: '100% 4px, 3px 100%', pointerEvents: 'none', zIndex: 10 }}></div>
-            {/* RESOLUTION DOUBLED TO 2000x1700 TO FIX BLUR! */}
-            <canvas ref={canvasRef} width={2000} height={1700} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', cursor: 'crosshair' }} />
+            <canvas ref={canvasRef} width={2000} height={1700} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', cursor: priorityTargetId ? 'crosshair' : 'crosshair' }} />
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {/* RIGHT PANEL */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <div style={{ backgroundColor: '#0f172a', padding: '15px', border: '1px solid #1e293b', borderRadius: '8px', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)' }}>
-            <h2 style={{ color: '#38bdf8', fontSize: '13px', marginTop: 0, borderBottom: '1px solid #1e293b', paddingBottom: '8px' }}>📊 COMMANDER SCORE</h2>
-            <div style={{ fontSize: '32px', color: score < 0 ? '#ef4444' : '#4ade80', fontWeight: 'bold', marginTop: '10px', textAlign: 'center' }}>
+            <h2 style={{ color: '#38bdf8', fontSize: '12px', marginTop: 0, borderBottom: '1px solid #1e293b', paddingBottom: '5px' }}>📊 COMMANDER SCORE</h2>
+            <div style={{ fontSize: '28px', color: score < 0 ? '#ef4444' : '#4ade80', fontWeight: 'bold', marginTop: '5px', textAlign: 'center' }}>
                 {score}
             </div>
           </div>
 
           <div style={{ backgroundColor: 'rgba(127, 29, 29, 0.1)', padding: '15px', border: '1px solid #7f1d1d', borderRadius: '8px', flex: 1 }}>
-            <h2 style={{ color: '#ef4444', fontSize: '13px', marginTop: 0, borderBottom: '1px solid #7f1d1d', paddingBottom: '8px' }}>⚠️ ACTIVE TRACKS</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px', fontSize: '12px' }}>
+            <h2 style={{ color: '#ef4444', fontSize: '12px', marginTop: 0, borderBottom: '1px solid #7f1d1d', paddingBottom: '5px' }}>⚠️ ACTIVE TRACKS</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px', fontSize: '11px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#fca5a5' }}>Contacts:</span> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{activeThreats.length}</span></div>
               
-              <div style={{ backgroundColor: '#451a1a', padding: '12px', borderRadius: '6px', marginTop: '8px' }}>
-                <div style={{ color: '#fca5a5', fontSize: '11px', fontWeight: 'bold', marginBottom: '10px' }}>TARGET STATUS</div>
+              <div style={{ backgroundColor: '#451a1a', padding: '10px', borderRadius: '6px', marginTop: '5px', maxHeight: '300px', overflowY: 'auto' }}>
                 {activeThreats.map(c => {
                   const isJamming = c.isStealth && !c.authorized;
                   let col = '#facc15';
@@ -516,23 +580,75 @@ export default function App() {
                   else if (c.displayIff === 'CIVILIAN') col = '#22d3ee';
                   
                   return (
-                    <div key={c.id} style={{ marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px dashed #7f1d1d' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: col, fontWeight: 'bold' }}>
-                        <span>{isJamming ? '???' : c.id}</span> <span>{c.authorized ? 'ENGAGE AUTH' : 'WARN TX'}</span>
+                    <div key={c.id} style={{ marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px dashed #7f1d1d' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: col, fontWeight: 'bold' }}>
+                        <span>{isJamming ? '???' : c.id}</span> <span>{isJamming ? 'SIGNAL LOST' : (c.authorized ? 'ENGAGE AUTH' : 'WARN TX')}</span>
                       </div>
                     </div>
                   );
                 })}
-                {activeThreats.length === 0 && <div style={{color: '#94a3b8', fontSize: '10px', textAlign:'center'}}>NO ACTIVE CONTACTS</div>}
-                
-                <div style={{ color: '#ef4444', fontSize: '10px', marginTop: '10px', textAlign: 'center', borderTop: '1px dashed #7f1d1d', paddingTop: '5px' }}>
-                    Click target on radar to AUTHORIZE FORCE.
-                </div>
+                {activeThreats.length === 0 && <div style={{color: '#94a3b8', textAlign:'center'}}>NO ACTIVE CONTACTS</div>}
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* NEW: DEDICATED AI ADVISORY TERMINAL (BOTTOM FULL WIDTH) */}
+      <div style={{ 
+          height: '180px', 
+          backgroundColor: '#020617', 
+          border: '1px solid #3b82f6', 
+          borderRadius: '8px', 
+          marginTop: '15px',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: 'inset 0 0 20px rgba(0,0,0,0.8)'
+      }}>
+          <div style={{ 
+              padding: '6px 15px', 
+              backgroundColor: '#1e3a8a', 
+              color: '#93c5fd', 
+              fontSize: '12px', 
+              fontWeight: 'bold', 
+              borderTopLeftRadius: '7px', 
+              borderTopRightRadius: '7px', 
+              borderBottom: '1px solid #3b82f6',
+              display: 'flex',
+              justifyContent: 'space-between'
+          }}>
+              <span>🧠 AI TACTICAL ADVISORY & COMMS LINK</span>
+              <span style={{ color: '#60a5fa' }}>LIVE ENCRYPTION: ACTIVE</span>
+          </div>
+          
+          <div style={{ 
+              flex: 1, 
+              padding: '12px 15px', 
+              overflowY: 'auto', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: '6px', 
+              fontSize: '12px' 
+          }}>
+              {logs.map((log, index) => (
+                  <div key={index} style={{ display: 'flex', gap: '12px', lineHeight: '1.4' }}>
+                      <span style={{ color: '#475569', minWidth: '65px' }}>[{log.time}]</span>
+                      <span style={{ 
+                          color: log.sender === 'AI ADVISOR' ? '#c084fc' : (log.sender === 'RADAR TEAM' ? '#38bdf8' : (log.sender === 'COMMANDER' ? '#fcd34d' : '#94a3b8')),
+                          fontWeight: 'bold',
+                          minWidth: '110px'
+                      }}>{log.sender}:</span>
+                      <span style={{ 
+                          color: log.type === 'alert' ? '#ef4444' : (log.type === 'warn' ? '#facc15' : (log.type === 'suggest' ? '#a78bfa' : (log.type === 'safe' ? '#4ade80' : '#cbd5e1'))),
+                          fontWeight: log.type === 'alert' || log.type === 'warn' ? 'bold' : 'normal'
+                      }}>{log.text}</span>
+                  </div>
+              ))}
+              {/* Invisible div to scroll to bottom */}
+              <div ref={logsEndRef} /> 
+          </div>
+      </div>
+
     </div>
   );
 }
