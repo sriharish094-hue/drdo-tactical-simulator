@@ -82,13 +82,13 @@ export default function App() {
     { id: 1, time: new Date().toLocaleTimeString('en-US', { hour12: false }), sender: 'SYSTEM', text: 'C4ISR AI ADVISORY TERMINAL ONLINE.', type: 'info' }
   ]);
   const logsEndRef = useRef(null);
-  const seenContacts = useRef({}); // Prevents spamming warnings for the same contact
+  const seenContacts = useRef({});
 
   const addLog = (sender, text, type = 'info') => {
     const time = new Date().toLocaleTimeString('en-US', { hour12: false });
     setLogs(prev => {
         const newLogs = [...prev, { id: Math.random(), time, sender, text, type }];
-        return newLogs.slice(-50); // Keep only last 50 logs to prevent memory issues
+        return newLogs.slice(-50); 
     });
   };
 
@@ -130,7 +130,6 @@ export default function App() {
           ));
           setPriorityTargetId(clickedTargetId);
           
-          // AI ADVISORY LOGIC ON COMMANDER CLICK
           if (contact && !contact.authorized) {
               addLog('COMMANDER', `Interrogating target ${contact.id}...`, 'cmd');
               setTimeout(() => {
@@ -138,7 +137,6 @@ export default function App() {
                       addLog('AI ADVISOR', `THREAT IDENTIFIED! Hostile ${contact.isStealth ? 'STEALTH' : ''} ${contact.type}.`, 'alert');
                       addLog('AI ADVISOR', `TELEMETRY: Power/Speed is ${Math.floor(contact.speed * 200)} KTS. Approaching from Heading ${Math.floor(contact.hdg)}°.`, 'info');
                       
-                      // Dynamic Tactical Recommendations
                       let rec = 'Authorize standard SAM engagement.';
                       if (radarMode === 'NAVY') {
                          if (contact.type.includes('SUB')) rec = 'Submerged threat. Deploy Anti-Submarine (ASW) Helicopters/Drones!';
@@ -209,19 +207,16 @@ export default function App() {
             return { ...contact, x: newX, y: newY };
           });
 
-          // RADAR TEAM WARNING LOGIC
           updatedContacts.forEach(c => {
              const dist = Math.hypot(c.x - basePos.x, c.y - basePos.y);
              if (dist <= radarRadius && c.status === 'ACTIVE' && !seenContacts.current[c.id]) {
                  seenContacts.current[c.id] = true;
-                 // Timeout used to safely update state outside the fast render loop
                  setTimeout(() => {
                      addLog('RADAR TEAM', `Unknown contact ${c.id} entering airspace. Transmitting [WARN TX] on Guard Frequency.`, 'warn');
                  }, 0);
              }
           });
 
-          // FIRE CONTROL LOGIC
           setInterceptors(prevInterceptors => {
             let newInterceptors = [...prevInterceptors];
             
@@ -522,7 +517,7 @@ export default function App() {
         <div style={{ color: '#4ade80', fontSize: '12px', border: '1px solid #4ade80', padding: '5px 10px', borderRadius: '4px', backgroundColor: 'rgba(74, 222, 128, 0.1)' }}>LINK: SECURE</div>
       </header>
 
-      {/* TOP SECTION: Controls, Radar, Score */}
+      {/* TOP SECTION */}
       <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr 280px', gap: '20px', flex: 1, minHeight: '550px' }}>
         
         {/* LEFT PANEL */}
