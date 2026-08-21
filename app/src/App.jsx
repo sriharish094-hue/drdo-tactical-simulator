@@ -36,7 +36,8 @@ const spawnContact = (isNavy) => {
     trueIff: trueIff,
     displayIff: 'UNKNOWN',
     isStealth: isStealth,
-    state: 'APPROACHING', // APPROACHING, WARNED, FLEEING, ENGAGED
+    autoIdentified: false, // NEW: Auto IFF flag
+    state: 'APPROACHING', 
     warnTime: null,
     x: startX, y: startY,
     vx: Math.cos(targetAngle) * speed, vy: Math.sin(targetAngle) * speed,
@@ -51,11 +52,12 @@ export default function App() {
   const canvasRef = useRef(null);
   const [radarMode, setRadarMode] = useState('AIR'); 
   const [isMicActive, setIsMicActive] = useState(false);
+  const [cliInput, setCliInput] = useState(''); // Text Input State
   
   const logicalWidth = 1100;
   const logicalHeight = 950;
   const basePos = { x: logicalWidth/2, y: logicalHeight/2 }; 
-  const radarRadius = 420; // LARGER RADAR
+  const radarRadius = 420; 
 
   const samBatteries = [
     { id: 'SAM-A', x: basePos.x - 80, y: basePos.y - 70 },
@@ -68,59 +70,54 @@ export default function App() {
   const [interceptors, setInterceptors] = useState([]);
   const [score, setScore] = useState(0);
   
-  // COMMANDER'S ARSENAL
   const [arsenal, setArsenal] = useState({ aircraft: 4, drones: 3, sams: 12 });
-  
   const stormRef = useRef({ x: basePos.x - 150, y: basePos.y - 200, radius: 140 });
   const [explosions, setExplosions] = useState([]);
   
   const [logs, setLogs] = useState([
-    { id: 1, time: new Date().toLocaleTimeString('en-US', { hour12: false }), sender: 'SYSTEM', text: 'C4ISR VOICE COMMS ONLINE. MIC STANDBY.', type: 'info' }
+    { id: 1, time: new Date().toLocaleTimeString('en-US', { hour12: false }), sender: 'SYSTEM', text: 'C4ISR COMMS ONLINE. VOICE & TEXT COMMANDS STANDBY.', type: 'info' }
   ]);
   const logsEndRef = useRef(null);
 
   const addLog = (sender, text, type = 'info') => {
     const time = new Date().toLocaleTimeString('en-US', { hour12: false });
-    setLogs(prev => [...prev.slice(-30), { id: Math.random(), time, sender, text, type }]);
+    setLogs(prev => [...prev.slice(-40), { id: Math.random(), time, sender, text, type }]);
   };
 
   useEffect(() => { if (logsEndRef.current) logsEndRef.current.scrollIntoView({ behavior: 'smooth' }); }, [logs]);
 
   // VOICE RECOGNITION SETUP
   useEffect(() => {
-    if (!recognition) {
-        addLog('SYSTEM', 'Voice Control not supported in this browser.', 'alert');
-        return;
-    }
-
+    if (!recognition) return;
     recognition.onresult = (event) => {
         const command = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
-        addLog('COMMANDER (MIC)', `"${command}"`, 'cmd');
-        processVoiceCommand(command);
+        addLog('CMD-VOICE', `"${command}"`, 'cmd');
+        processCommand(command);
     };
-
-    recognition.onerror = (event) => {
-        setIsMicActive(false);
-        addLog('SYSTEM', `Mic Error: ${event.error}`, 'alert');
-    };
-
-    recognition.onend = () => {
-        if (isMicActive) recognition.start(); // Keep listening if active
-    };
-
+    recognition.onerror = (event) => { setIsMicActive(false); addLog('SYSTEM', `Mic Error: ${event.error}`, 'alert'); };
+    recognition.onend = () => { if (isMicActive) recognition.start(); };
     if (isMicActive) {
-        try { recognition.start(); addLog('SYSTEM', 'MIC ACTIVATED. LISTENING FOR COMMANDS...', 'safe'); } catch(e){}
+        try { recognition.start(); addLog('SYSTEM', 'MIC ACTIVATED. LISTENING...', 'safe'); } catch(e){}
     } else {
         recognition.stop(); addLog('SYSTEM', 'MIC DEACTIVATED.', 'warn');
     }
-
     return () => recognition.stop();
   }, [isMicActive]);
 
-  // PROCESS VOICE COMMANDS
-  const processVoiceCommand = (cmd) => {
+  // TEXT COMMAND (CLI) HANDLING
+  const handleCliSubmit = (e) => {
+      if (e.key === 'Enter' && cliInput.trim() !== '') {
+          const cmd = cliInput.toLowerCase().trim();
+          addLog('CMD-TEXT', `> ${cmd}`, 'cmd');
+          processCommand(cmd);
+          setCliInput('');
+      }
+  };
+
+  // UNIFIED COMMAND PROCESSOR (Voice & Text)
+  const processCommand = (cmd) => {
       if (!priorityTargetId) {
-          addLog('AI ADVISOR', 'No target locked. Click a target on radar first!', 'warn');
+          addLog('AI ADVISOR', 'No target locked! Click a target on the radar to designate first.', 'warn');
           return;
       }
       
@@ -136,46 +133,41 @@ export default function App() {
           if (cmd.includes('warn')) {
               if (target.state === 'APPROACHING') {
                   updated[targetIndex] = { ...target, state: 'WARNED', warnTime: Date.now() };
-                  addLog('RADAR TEAM', `Transmitting final warning to ${target.id}. Awaiting response...`, 'warn');
+                  addLog('RADAR TEAM', `Transmitting final warning to ${target.id}...`, 'warn');
               } else {
-                  addLog('AI ADVISOR', `Target ${target.id} already warned.`, 'info');
+                  addLog('AI ADVISOR', `Target ${target.id} is already warned.`, 'info');
               }
           } 
           else if (cmd.includes('attack') || cmd.includes('send') || cmd.includes('fire')) {
-              // ROE CHECK: Must be warned or clearly hostile, cannot attack fleeing
               if (target.state === 'FLEEING') {
-                  addLog('AI ADVISOR', 'ROE VIOLATION! Target is retreating. Do not engage.', 'alert');
+                  addLog('AI ADVISOR', 'ROE VIOLATION: Target retreating. DO NOT ENGAGE.', 'alert');
                   return updated;
               }
               if (target.displayIff === 'CIVILIAN') {
-                  addLog('AI ADVISOR', 'ROE VIOLATION! Cannot attack civilian flights!', 'alert');
+                  addLog('AI ADVISOR', 'ROE VIOLATION: Cannot attack civilian flights!', 'alert');
                   return updated;
               }
 
               let weaponType = null;
               if (cmd.includes('aircraft') || cmd.includes('jet')) weaponType = 'aircraft';
               else if (cmd.includes('drone')) weaponType = 'drones';
-              else if (cmd.includes('tank') || cmd.includes('sam')) weaponType = 'sams';
+              else if (cmd.includes('tank') || cmd.includes('sam') || cmd.includes('missile')) weaponType = 'sams';
 
               if (!weaponType) {
-                  addLog('AI ADVISOR', 'Weapon not recognized. Say "Attack by Aircraft/Drone/Tanks".', 'warn');
+                  addLog('AI ADVISOR', 'Weapon unknown. Type/Say: "attack by aircraft", "attack by drones", or "fire sam".', 'warn');
                   return updated;
               }
 
               setArsenal(prevArs => {
                   if (prevArs[weaponType] <= 0) {
-                      addLog('AI ADVISOR', `Insufficient ${weaponType} in inventory!`, 'alert');
+                      addLog('AI ADVISOR', `Insufficient ${weaponType.toUpperCase()} in arsenal!`, 'alert');
                       return prevArs;
                   }
-                  
-                  // Weather Check
                   if (weaponType === 'drones' && inStorm) {
-                      addLog('AI ADVISOR', 'WEATHER ALERT: Cannot deploy drones in STORM CELL. Use Aircraft or Tanks.', 'alert');
+                      addLog('AI ADVISOR', 'WEATHER ALERT: Drones cannot operate in STORM CELL. Use Aircraft or SAMs.', 'alert');
                       return prevArs;
                   }
-
-                  // Launch Weapon
-                  addLog('FIRE CONTROL', `${weaponType.toUpperCase()} deployed against ${target.id}!`, 'safe');
+                  addLog('FIRE CONTROL', `${weaponType.toUpperCase()} deployed to intercept ${target.id}!`, 'safe');
                   launchWeapon(target, weaponType);
                   return { ...prevArs, [weaponType]: prevArs[weaponType] - 1 };
               });
@@ -193,12 +185,12 @@ export default function App() {
           srcX = bat.x; srcY = bat.y;
       }
       setInterceptors(prev => [...prev, {
-          x: srcX, y: srcY, speed: type === 'aircraft' ? 25 : (type === 'drones' ? 12 : 18), 
+          x: srcX, y: srcY, speed: type === 'aircraft' ? 25 : (type === 'drones' ? 12 : 20), 
           targetId: target.id, type: type
       }]);
   };
 
-  // MOUSE CLICK LOCK
+  // MOUSE CLICK LOCK (Target Designation)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -217,7 +209,7 @@ export default function App() {
       if (clickedId) {
           setContacts(prev => prev.map(c => c.id === clickedId ? { ...c, displayIff: c.trueIff } : c));
           setPriorityTargetId(clickedId);
-          addLog('SYSTEM', `Target ${clickedId} Locked. Awaiting Voice Command ("Warn Target" or "Attack by...").`, 'info');
+          addLog('SYSTEM', `Designated Priority Target: ${clickedId}. Awaiting Command.`, 'info');
       } else {
           setPriorityTargetId(null);
       }
@@ -226,7 +218,7 @@ export default function App() {
     return () => canvas.removeEventListener('click', handleCanvasClick);
   }, [contacts]);
 
-  // MAIN GAME LOOP
+  // MAIN GAME LOOP (With Auto-Detection)
   useEffect(() => {
     let animationFrameId;
     let lastTime = performance.now();
@@ -246,25 +238,39 @@ export default function App() {
               return { ...c };
             }
 
+            // AUTO-DETECTION (IFF)
+            const dist = Math.hypot(c.x - basePos.x, c.y - basePos.y);
+            if (dist < radarRadius && !c.autoIdentified) {
+                if (!c.isStealth) {
+                    // Standard target: Auto Identify immediately
+                    setTimeout(() => {
+                        if (c.trueIff === 'HOSTILE') addLog('AI ADVISOR', `HOSTILE DETECTED: ${c.type} approaching at ${Math.floor(c.speed*200)} KTS (Hdg ${Math.floor(c.hdg)}°).`, 'alert');
+                        else addLog('SYSTEM', `CIVILIAN TRAFFIC LOGGED: ${c.type}. Safe.`, 'safe');
+                    }, 0);
+                    return { ...c, autoIdentified: true, displayIff: c.trueIff };
+                } else {
+                    // Stealth target: Glitchy warning, requires manual click
+                    setTimeout(() => addLog('AI ADVISOR', `WARNING: Unknown Radar Anomaly detected. Stealth suspected. Manual lock required!`, 'warn'), 0);
+                    return { ...c, autoIdentified: true }; // Flags it so we don't spam the warning
+                }
+            }
+
             // FLEEING LOGIC
             if (c.state === 'WARNED' && Date.now() - c.warnTime > 3000) {
-                // Determine if they run away (Civilian always runs, hostile 30% chance)
                 const willFlee = c.trueIff === 'CIVILIAN' || Math.random() > 0.7;
                 if (willFlee) {
-                    addLog('RADAR TEAM', `${c.id} is complying and retreating. DO NOT ENGAGE.`, 'safe');
-                    const fleeAngle = Math.atan2(c.y - basePos.y, c.x - basePos.x); // away from base
+                    addLog('RADAR TEAM', `${c.id} is complying and retreating.`, 'safe');
+                    const fleeAngle = Math.atan2(c.y - basePos.y, c.x - basePos.x); 
                     return { ...c, state: 'FLEEING', vx: Math.cos(fleeAngle) * (c.speed+0.5), vy: Math.sin(fleeAngle) * (c.speed+0.5), hdg: (fleeAngle * 180/Math.PI + 90)%360 };
                 } else {
                     addLog('RADAR TEAM', `${c.id} ignoring warnings! Target is HOSTILE.`, 'alert');
-                    return { ...c, state: 'APPROACHING', displayIff: 'HOSTILE' }; // Forces hostile state
+                    return { ...c, state: 'APPROACHING', displayIff: 'HOSTILE' }; 
                 }
             }
 
             let newX = c.x + c.vx, newY = c.y + c.vy;
-            
-            // Check if cleared screen
             if (Math.hypot(newX - basePos.x, newY - basePos.y) > 900) {
-                if (c.state === 'FLEEING') setTimeout(() => addLog('SYSTEM', `ENEMY CLEAR. ${c.id} left airspace.`, 'safe'), 0);
+                if (c.state === 'FLEEING') setTimeout(() => addLog('SYSTEM', `ENEMY CLEAR. ${c.id} has left the airspace.`, 'safe'), 0);
                 return spawnContact(radarMode === 'NAVY');
             }
             return { ...c, x: newX, y: newY };
@@ -297,7 +303,7 @@ export default function App() {
         const cx = basePos.x, cy = basePos.y; 
         const sweepAngle = (Date.now() / 1500) % (Math.PI * 2);
 
-        ctx.save(); ctx.scale(1, 1); // No double scale to prevent coord issues, layout handles size
+        ctx.save(); ctx.scale(1, 1); 
         ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, logicalWidth, logicalHeight);
 
         // Map Outline
@@ -306,29 +312,24 @@ export default function App() {
         ctx.lineTo(cx+500, cy+500); ctx.lineTo(cx-500, cy+500); ctx.closePath();
         ctx.fillStyle = 'rgba(20, 83, 45, 0.1)'; ctx.fill(); ctx.strokeStyle = 'rgba(34, 197, 94, 0.15)'; ctx.stroke();
 
-        // Rings & Mask
         ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, radarRadius, 0, Math.PI*2); ctx.clip();
         ctx.fillStyle = 'rgba(1, 28, 9, 0.4)'; ctx.fill();
         ctx.strokeStyle = 'rgba(34, 197, 94, 0.3)';
         for (let r=80; r<=radarRadius; r+=80) { ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke(); }
         for (let i=0; i<360; i+=30) { ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx+Math.cos(i*Math.PI/180)*radarRadius, cy+Math.sin(i*Math.PI/180)*radarRadius); ctx.stroke(); }
         
-        // Storm
         ctx.beginPath(); ctx.arc(stormRef.current.x, stormRef.current.y, stormRef.current.radius, 0, Math.PI*2);
         ctx.fillStyle = 'rgba(148, 163, 184, 0.1)'; ctx.fill(); ctx.setLineDash([10,10]); ctx.stroke(); ctx.setLineDash([]);
 
-        // Sweep
         const grad = ctx.createConicGradient(sweepAngle - Math.PI/2, cx, cy);
         grad.addColorStop(0, 'rgba(74, 222, 128, 0.6)'); grad.addColorStop(0.1, 'rgba(34, 197, 94, 0.1)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(cx, cy, radarRadius, 0, Math.PI*2); ctx.fill();
         ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx+Math.cos(sweepAngle)*radarRadius, cy+Math.sin(sweepAngle)*radarRadius); ctx.strokeStyle = '#ffffff'; ctx.stroke();
         ctx.restore();
 
-        // Base & Batteries
         ctx.fillStyle='#38bdf8'; ctx.font='bold 12px monospace'; ctx.fillText('HQ', cx-10, cy+20);
         samBatteries.forEach(b => { ctx.fillStyle='rgba(74,222,128,0.3)'; ctx.fillRect(b.x-6, b.y-6, 12, 12); ctx.strokeStyle='#4ade80'; ctx.strokeRect(b.x-6, b.y-6, 12, 12); });
 
-        // Contacts
         contacts.forEach(c => {
             if (Math.hypot(c.x-cx, c.y-cy) > radarRadius) return;
             const isActive = c.status === 'ACTIVE';
@@ -345,7 +346,7 @@ export default function App() {
             if (isActive) {
                 if (isLocked) { ctx.rotate(Date.now()/500); ctx.strokeStyle='#fff'; ctx.strokeRect(-12,-12,24,24); ctx.rotate(-Date.now()/500); }
                 ctx.beginPath(); ctx.arc(0,0,6,0,Math.PI*2); ctx.strokeStyle=col; ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(c.vx*10, c.vy*10); ctx.stroke(); // velocity tail
+                ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(c.vx*10, c.vy*10); ctx.stroke(); 
                 
                 let label = c.id;
                 if (c.state === 'WARNED') label = '[WARNED]';
@@ -375,83 +376,115 @@ export default function App() {
   const activeTarget = contacts.find(c => c.id === priorityTargetId);
 
   return (
-    <div style={{ backgroundColor: '#020617', color: 'white', minHeight: '100vh', padding: '15px', fontFamily: '"Courier New", monospace', display: 'flex', flexDirection: 'column' }}>
+    // STRICT 100vh NO-SCROLL LAYOUT
+    <div style={{ backgroundColor: '#020617', color: 'white', height: '100vh', width: '100vw', padding: '10px', boxSizing: 'border-box', overflow: 'hidden', fontFamily: '"Courier New", monospace', display: 'flex', flexDirection: 'column' }}>
       
-      <header style={{ borderBottom: '1px solid #38bdf8', paddingBottom: '10px', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ color: '#38bdf8', margin: 0, fontSize: '22px' }}>C4ISR // VOICE-OP TACTICAL RADAR</h1>
-        
-        {/* BIG MIC BUTTON */}
-        <button onClick={() => setIsMicActive(!isMicActive)} style={{ backgroundColor: isMicActive ? '#ef4444' : '#1e293b', color: '#fff', padding: '10px 20px', border: `2px solid ${isMicActive?'#fca5a5':'#475569'}`, borderRadius: '8px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {isMicActive ? '🔴 MIC LIVE - LISTENING' : '🎙️ MIC OFF (CLICK TO PUSH TO TALK)'}
-        </button>
+      {/* HEADER */}
+      <header style={{ height: '40px', borderBottom: '1px solid #38bdf8', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <h1 style={{ color: '#38bdf8', margin: 0, fontSize: '20px' }}>C4ISR // COMMAND TERMINAL</h1>
+        <div style={{ color: '#4ade80', fontSize: '12px', border: '1px solid #4ade80', padding: '4px 8px', borderRadius: '4px' }}>LINK: SECURE</div>
       </header>
 
-      {/* TOP SECTION: Radar */}
-      <div style={{ flex: 1, minHeight: '650px', position: 'relative', border: '3px solid #334155', borderRadius: '12px', overflow: 'hidden' }}>
-         <canvas ref={canvasRef} width={logicalWidth} height={logicalHeight} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', cursor: priorityTargetId ? 'crosshair' : 'crosshair', backgroundColor: '#000' }} />
-      </div>
+      {/* MAIN RADAR ROW */}
+      <div style={{ display: 'flex', gap: '10px', flex: 1, minHeight: 0 }}>
+        
+        {/* LEFT PANEL */}
+        <div style={{ width: '250px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ backgroundColor: '#0f172a', padding: '10px', borderRadius: '8px', border: '1px solid #334155' }}>
+            <button onClick={() => setRadarMode(radarMode==='AIR'?'NAVY':'AIR')} style={{ width: '100%', padding: '8px', marginBottom: '8px', backgroundColor: radarMode === 'NAVY' ? '#082f49' : '#022c11', color: radarMode === 'NAVY' ? '#7dd3fc' : '#86efac', border: `1px solid ${radarMode === 'NAVY' ? '#0ea5e9' : '#22c55e'}`, cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}>
+              {radarMode === 'AIR' ? '✈️ AIR RADAR' : '🌊 NAVAL SONAR'}
+            </button>
+            <button onClick={() => window.location.reload()} style={{ width: '100%', padding: '8px', backgroundColor: '#1e293b', color: '#cbd5e1', border: '1px solid #475569', cursor: 'pointer', fontSize: '11px' }}>REBOOT SYSTEM</button>
+          </div>
+          <div style={{ flex: 1, backgroundColor: 'rgba(34, 211, 238, 0.1)', border: '1px solid #0891b2', padding: '10px', borderRadius: '8px', fontSize: '11px', color: '#94a3b8', lineHeight: '1.5' }}>
+             <strong style={{color:'#22d3ee'}}>COMMANDS INFO:</strong><br/><br/>
+             1. Click target to Lock.<br/>
+             2. Use Mic or Text Box to issue commands:<br/>
+             <span style={{color:'#fff'}}>- "Warn target"</span><br/>
+             <span style={{color:'#fff'}}>- "Attack by aircraft"</span><br/>
+             <span style={{color:'#fff'}}>- "Attack by drones"</span><br/>
+             <span style={{color:'#fff'}}>- "Fire sam / tanks"</span>
+          </div>
+        </div>
 
-      {/* BOTTOM SECTION: AI ADVISORY SPLIT COLUMNS */}
-      <div style={{ height: '240px', marginTop: '15px', display: 'grid', gridTemplateColumns: '60% 40%', gap: '15px' }}>
-          
-          {/* LEFT COL: VOICE LOGS */}
-          <div style={{ backgroundColor: '#081229', border: '1px solid #3b82f6', borderRadius: '8px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ padding: '8px 15px', backgroundColor: '#1e3a8a', color: '#93c5fd', fontSize: '12px', fontWeight: 'bold' }}>📡 COMMS & AI ADVISORY LOG</div>
-              <div style={{ flex: 1, padding: '10px 15px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px' }}>
-                  {logs.map((log, i) => (
-                      <div key={i} style={{ display: 'flex', gap: '10px' }}>
-                          <span style={{ color: '#475569' }}>[{log.time}]</span>
-                          <span style={{ color: log.sender.includes('AI') ? '#c084fc' : (log.sender.includes('MIC') ? '#fcd34d' : '#38bdf8'), fontWeight: 'bold', minWidth: '130px' }}>{log.sender}:</span>
-                          <span style={{ color: log.type === 'alert' ? '#ef4444' : (log.type === 'warn' ? '#facc15' : (log.type === 'cmd' ? '#fff' : '#4ade80')) }}>{log.text}</span>
-                      </div>
-                  ))}
-                  <div ref={logsEndRef} /> 
-              </div>
+        {/* CENTER RADAR (Auto-Scales to fit remaining space) */}
+        <div style={{ flex: 1, position: 'relative', border: '3px solid #334155', borderRadius: '8px', backgroundColor: '#000', overflow: 'hidden' }}>
+          <canvas ref={canvasRef} width={logicalWidth} height={logicalHeight} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', cursor: priorityTargetId ? 'crosshair' : 'crosshair' }} />
+        </div>
+
+        {/* RIGHT PANEL (Arsenal & Details) */}
+        <div style={{ width: '250px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ backgroundColor: '#0f172a', padding: '10px', border: '1px solid #1e293b', borderRadius: '8px', textAlign: 'center' }}>
+            <div style={{ color: '#38bdf8', fontSize: '11px', fontWeight: 'bold' }}>SCORE</div>
+            <div style={{ fontSize: '24px', color: '#4ade80', fontWeight: 'bold' }}>{score}</div>
           </div>
 
-          {/* RIGHT COL: TARGET DEETS & ARSENAL */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              
-              {/* Target Details */}
-              <div style={{ flex: 1, backgroundColor: '#1e1b4b', border: '1px solid #6366f1', borderRadius: '8px', padding: '15px' }}>
-                  <div style={{ color: '#818cf8', fontSize: '12px', fontWeight: 'bold', borderBottom: '1px solid #4338ca', paddingBottom: '8px', marginBottom: '10px' }}>🎯 LOCKED TARGET DOSSIER</div>
-                  {activeTarget ? (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '13px' }}>
-                          <div style={{ color: '#c7d2fe' }}>ID: <span style={{ color: '#fff', fontWeight:'bold' }}>{activeTarget.id}</span></div>
-                          <div style={{ color: '#c7d2fe' }}>TYPE: <span style={{ color: '#fff', fontWeight:'bold' }}>{activeTarget.type}</span></div>
-                          <div style={{ color: '#c7d2fe' }}>STATUS: <span style={{ color: activeTarget.state==='WARNED'?'#facc15':'#fff', fontWeight:'bold' }}>{activeTarget.state}</span></div>
-                          <div style={{ color: '#c7d2fe' }}>SPEED: <span style={{ color: '#fff', fontWeight:'bold' }}>{Math.floor(activeTarget.speed*200)} KTS</span></div>
-                          <div style={{ color: '#c7d2fe' }}>JAMMING: <span style={{ color: activeTarget.isStealth?'#ef4444':'#4ade80', fontWeight:'bold' }}>{activeTarget.isStealth?'ACTIVE':'NONE'}</span></div>
-                          <div style={{ color: '#c7d2fe' }}>WEATHER: <span style={{ color: '#fff', fontWeight:'bold' }}>{Math.hypot(activeTarget.x-stormRef.current.x, activeTarget.y-stormRef.current.y) < stormRef.current.radius ? 'IN STORM' : 'CLEAR'}</span></div>
-                      </div>
-                  ) : (
-                      <div style={{ color: '#6366f1', textAlign: 'center', marginTop: '20px', fontStyle: 'italic' }}>CLICK CONTACT ON RADAR TO LOCK</div>
-                  )}
-              </div>
-
-              {/* Arsenal Inventory */}
-              <div style={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', padding: '15px' }}>
-                  <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 'bold', marginBottom: '10px', display: 'flex', justifyContent: 'space-between' }}>
-                      <span>🛡️ COMMANDER'S ARSENAL</span>
-                      <span style={{ color: '#4ade80' }}>SCORE: {score}</span>
+          {/* ARSENAL */}
+          <div style={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', padding: '10px' }}>
+              <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 'bold', marginBottom: '8px' }}>🛡️ ARSENAL</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', textAlign: 'center', fontSize: '11px' }}>
+                  <div style={{ backgroundColor: '#1e293b', padding: '5px', borderRadius: '4px', flex: 1, marginRight: '5px' }}>
+                      <div style={{ color: '#38bdf8' }}>JETS</div><div style={{ fontWeight: 'bold', fontSize:'14px' }}>{arsenal.aircraft}</div>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', textAlign: 'center', fontSize: '12px' }}>
-                      <div style={{ backgroundColor: '#1e293b', padding: '8px', borderRadius: '4px', flex: 1, marginRight: '10px' }}>
-                          <div style={{ color: '#38bdf8', marginBottom: '5px' }}>AIRCRAFT</div>
-                          <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{arsenal.aircraft}</div>
-                      </div>
-                      <div style={{ backgroundColor: '#1e293b', padding: '8px', borderRadius: '4px', flex: 1, marginRight: '10px' }}>
-                          <div style={{ color: '#facc15', marginBottom: '5px' }}>DRONES</div>
-                          <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{arsenal.drones}</div>
-                      </div>
-                      <div style={{ backgroundColor: '#1e293b', padding: '8px', borderRadius: '4px', flex: 1 }}>
-                          <div style={{ color: '#ef4444', marginBottom: '5px' }}>TANKS / SAM</div>
-                          <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{arsenal.sams}</div>
-                      </div>
+                  <div style={{ backgroundColor: '#1e293b', padding: '5px', borderRadius: '4px', flex: 1, marginRight: '5px' }}>
+                      <div style={{ color: '#facc15' }}>DRONE</div><div style={{ fontWeight: 'bold', fontSize:'14px' }}>{arsenal.drones}</div>
+                  </div>
+                  <div style={{ backgroundColor: '#1e293b', padding: '5px', borderRadius: '4px', flex: 1 }}>
+                      <div style={{ color: '#ef4444' }}>SAM</div><div style={{ fontWeight: 'bold', fontSize:'14px' }}>{arsenal.sams}</div>
                   </div>
               </div>
           </div>
+
+          {/* TARGET DOSSIER */}
+          <div style={{ flex: 1, backgroundColor: '#1e1b4b', border: '1px solid #6366f1', borderRadius: '8px', padding: '10px', overflowY: 'auto' }}>
+              <div style={{ color: '#818cf8', fontSize: '11px', fontWeight: 'bold', borderBottom: '1px solid #4338ca', paddingBottom: '5px', marginBottom: '8px' }}>🎯 TARGET DOSSIER</div>
+              {activeTarget ? (
+                  <div style={{ fontSize: '11px', lineHeight: '1.8' }}>
+                      <div style={{ color: '#c7d2fe' }}>ID: <span style={{ color: '#fff', fontWeight:'bold' }}>{activeTarget.id}</span></div>
+                      <div style={{ color: '#c7d2fe' }}>TYPE: <span style={{ color: '#fff', fontWeight:'bold' }}>{activeTarget.type}</span></div>
+                      <div style={{ color: '#c7d2fe' }}>STATUS: <span style={{ color: activeTarget.state==='WARNED'?'#facc15':'#fff', fontWeight:'bold' }}>{activeTarget.state}</span></div>
+                      <div style={{ color: '#c7d2fe' }}>SPEED: <span style={{ color: '#fff', fontWeight:'bold' }}>{Math.floor(activeTarget.speed*200)} KTS</span></div>
+                      <div style={{ color: '#c7d2fe' }}>WX: <span style={{ color: '#fff', fontWeight:'bold' }}>{Math.hypot(activeTarget.x-stormRef.current.x, activeTarget.y-stormRef.current.y) < stormRef.current.radius ? 'IN STORM' : 'CLEAR'}</span></div>
+                  </div>
+              ) : (
+                  <div style={{ color: '#6366f1', textAlign: 'center', marginTop: '20px', fontStyle: 'italic', fontSize: '11px' }}>CLICK RADAR CONTACT</div>
+              )}
+          </div>
+        </div>
       </div>
+
+      {/* BOTTOM LOG & COMMAND LINE (Fixed height) */}
+      <div style={{ height: '200px', backgroundColor: '#081229', border: '1px solid #3b82f6', borderRadius: '8px', marginTop: '10px', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+          <div style={{ flex: 1, padding: '10px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
+              {logs.map((log, i) => (
+                  <div key={i} style={{ display: 'flex', gap: '8px', lineHeight: '1.4' }}>
+                      <span style={{ color: '#475569', minWidth: '60px' }}>[{log.time}]</span>
+                      <span style={{ color: log.sender.includes('AI') ? '#c084fc' : (log.sender.includes('CMD') ? '#fcd34d' : '#38bdf8'), fontWeight: 'bold', minWidth: '100px' }}>{log.sender}:</span>
+                      <span style={{ color: log.type === 'alert' ? '#ef4444' : (log.type === 'warn' ? '#facc15' : (log.type === 'cmd' ? '#fff' : '#4ade80')) }}>{log.text}</span>
+                  </div>
+              ))}
+              <div ref={logsEndRef} /> 
+          </div>
+
+          {/* COMMAND LINE INPUT AREA */}
+          <div style={{ borderTop: '1px solid #3b82f6', display: 'flex', padding: '8px', backgroundColor: '#020617' }}>
+              <button onClick={() => setIsMicActive(!isMicActive)} style={{ backgroundColor: isMicActive ? '#ef4444' : '#1e3a8a', color: '#fff', padding: '6px 12px', border: 'none', borderRadius: '4px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', marginRight: '10px' }}>
+                  {isMicActive ? '🔴 MIC LIVE' : '🎙️ MIC OFF'}
+              </button>
+              <div style={{ display: 'flex', alignItems: 'center', flex: 1, backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '4px', padding: '0 10px' }}>
+                  <span style={{ color: '#22d3ee', fontWeight: 'bold', marginRight: '8px' }}>&gt;</span>
+                  <input 
+                      type="text" 
+                      value={cliInput}
+                      onChange={(e) => setCliInput(e.target.value)}
+                      onKeyDown={handleCliSubmit}
+                      placeholder="Type tactical command here (e.g. 'warn target' or 'attack by aircraft') and press Enter..."
+                      style={{ flex: 1, backgroundColor: 'transparent', border: 'none', color: '#fff', fontSize: '12px', outline: 'none', fontFamily: '"Courier New", monospace' }}
+                  />
+              </div>
+          </div>
+      </div>
+
     </div>
   );
 }
