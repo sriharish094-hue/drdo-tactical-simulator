@@ -38,6 +38,7 @@ const spawnContact = (isNavy) => {
     trueIff: trueIff,
     displayIff: 'UNKNOWN',
     isStealth: isStealth,
+    authorized: false, // NEW: Requires Commander Authorization to attack
     x: startX,
     y: startY,
     vx: Math.cos(targetAngle) * speed,
@@ -52,12 +53,14 @@ const spawnContact = (isNavy) => {
 
 export default function App() {
   const canvasRef = useRef(null);
-  const [isAIActive, setIsAIActive] = useState(false);
+  const [isAIActive, setIsAIActive] = useState(false); // Master Arm Switch
   const [radarMode, setRadarMode] = useState('AIR'); 
-  const basePos = { x: 500, y: 425 }; 
+  
+  const logicalWidth = 1000;
+  const logicalHeight = 850;
+  const basePos = { x: logicalWidth/2, y: logicalHeight/2 }; 
   const radarRadius = 380; 
 
-  // REALISTIC DEFENSE LAYER: SAM Batteries (TEL - Transporter Erector Launcher)
   const samBatteries = [
     { id: 'SAM-ALPHA', x: 420, y: 360 },
     { id: 'SAM-BRAVO', x: 580, y: 360 },
@@ -72,17 +75,18 @@ export default function App() {
   const lastAutoFire = useRef(0);
   const casualtyTimer = useRef(0); 
   const [explosions, setExplosions] = useState([]);
-  const [advisorText, setAdvisorText] = useState('SEARCH RADAR ACTIVE. AWAITING TARGET DETECTIONS.');
+  const [advisorText, setAdvisorText] = useState('SYSTEM SAFE. AWAITING COMMANDER DIRECTIVE.');
 
-  // Mouse Interaction: Fire Control Manual Lock
+  // Mouse Interaction: Commander Authorization (Click to Authorize)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const handleCanvasClick = (e) => {
       const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
+      // Calculate based on the LOGICAL 1000x850 space, ignoring Retina scale
+      const scaleX = logicalWidth / rect.width;
+      const scaleY = logicalHeight / rect.height;
       const mouseX = (e.clientX - rect.left) * scaleX;
       const mouseY = (e.clientY - rect.top) * scaleY;
 
@@ -100,9 +104,11 @@ export default function App() {
       });
 
       if (clickedTargetId) {
-          setContacts(prev => prev.map(c => c.id === clickedTargetId ? { ...c, displayIff: c.trueIff, type: c.trueIff === 'HOSTILE' ? 'STEALTH DRONE' : c.type } : c));
+          setContacts(prev => prev.map(c => 
+            c.id === clickedTargetId ? { ...c, displayIff: c.trueIff, type: c.trueIff === 'HOSTILE' ? (c.isStealth ? 'STEALTH DRONE' : c.type) : c.type, authorized: true } : c
+          ));
           setPriorityTargetId(clickedTargetId);
-          setAdvisorText(`⚠️ FIRE CONTROL: TARGET ${clickedTargetId} LOCKED. UPLOADING COORDINATES TO TEL.`);
+          setAdvisorText(`⚠️ COMMANDER OVERRIDE: LETHAL FORCE AUTHORIZED FOR ${clickedTargetId}.`);
       } else {
           setPriorityTargetId(null);
           setAdvisorText(`FIRE CONTROL: LOCK CLEARED. SEARCH RADAR SWEEPING.`);
@@ -158,39 +164,28 @@ export default function App() {
             return { ...contact, x: newX, y: newY };
           });
 
-          // FIRE CONTROL & LAUNCHER (TEL) LOGIC
+          // FIRE CONTROL LOGIC
           setInterceptors(prevInterceptors => {
             let newInterceptors = [...prevInterceptors];
             
-            // Search radar filters available targets
+            // NEW RULES OF ENGAGEMENT: Target MUST be manually Authorized!
             const activeContacts = updatedContacts.filter(c => 
               c.status === 'ACTIVE' && 
               c.displayIff !== 'CIVILIAN' &&
-              (!c.isStealth || c.id === priorityTargetId) && 
+              c.authorized === true && // Commander must have clicked it
               Math.hypot(c.x - basePos.x, c.y - basePos.y) <= radarRadius
             );
             
             if (isAIActive && activeContacts.length > 0) {
-              let targetContact = activeContacts.find(c => c.id === priorityTargetId);
-              if (!targetContact) {
-                  targetContact = activeContacts.reduce((min, c) => {
-                    let d = Math.hypot(c.x - basePos.x, c.y - basePos.y);
-                    return d < min.dist ? { contact: c, dist: d } : min;
-                  }, { contact: activeContacts[0], dist: 9999 }).contact;
-              }
-
+              let targetContact = activeContacts.find(c => c.id === priorityTargetId) || activeContacts[0];
               let targetDist = Math.hypot(targetContact.x - basePos.x, targetContact.y - basePos.y);
-              let engageRange = targetContact.displayIff === 'HOSTILE' ? 220 : 120;
-
-              if (targetDist < engageRange && Date.now() - lastAutoFire.current > 1500) {
-                
-                // FIRE CONTROL assigns target to the CLOSEST SAM BATTERY (Launcher)
+              
+              if (targetDist < 300 && Date.now() - lastAutoFire.current > 1500) {
                 let closestBattery = samBatteries.reduce((min, bat) => {
                     let d = Math.hypot(bat.x - targetContact.x, bat.y - targetContact.y);
                     return d < min.dist ? { battery: bat, dist: d } : min;
                 }, { battery: samBatteries[0], dist: 9999 }).battery;
 
-                // Missile launches from the selected Battery's coordinates, not the center
                 newInterceptors.push({ 
                     x: closestBattery.x, 
                     y: closestBattery.y, 
@@ -216,7 +211,6 @@ export default function App() {
                 } else {
                     setScore(s => s + 150);
                 }
-
                 updatedContacts = updatedContacts.map(c => c.id === tEnemy.id ? { ...c, status: 'DESTROYED', vx: 0, vy: 0, deathTimer: 0, displayIff: c.trueIff } : c);
                 setExplosions(ex => [...ex, { x: tEnemy.x, y: tEnemy.y, life: 15 }]);
                 return null;
@@ -230,7 +224,7 @@ export default function App() {
         setExplosions(prev => prev.map(e => ({ ...e, life: e.life - 1 })).filter(e => e.life > 0));
       }
 
-      // --- CANVAS DRAWING ---
+      // --- CANVAS DRAWING WITH HIGH-DPI RETINA SCALING FIX ---
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext('2d');
@@ -243,7 +237,10 @@ export default function App() {
         const radarSweepColorSolid = isNavy ? 'rgba(56, 189, 248, 0.7)' : 'rgba(74, 222, 128, 0.8)';
         const textColor = isNavy ? '#38bdf8' : '#4ade80';
 
-        ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.save();
+        ctx.scale(2, 2); // Scales internal drawing by 2x to fix blur!
+
+        ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, logicalWidth, logicalHeight);
 
         ctx.beginPath(); ctx.arc(cx, cy, radarRadius + 25, 0, Math.PI * 2);
         ctx.fillStyle = '#0f172a'; ctx.fill(); 
@@ -321,35 +318,30 @@ export default function App() {
           ctx.fillStyle = color; ctx.font = `${bold ? 'bold ' : ''}11px "Courier New", monospace`; ctx.fillText(text, x, y); 
         };
 
-        // 1. EARLY WARNING RADAR (Center Base)
+        // EW-RADAR
         ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2); ctx.strokeStyle = textColor; ctx.lineWidth = 1; ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, cy - 10); ctx.stroke(); // Spinning antenna visual
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, cy - 10); ctx.stroke();
         drawTacticalText(`EW-RADAR`, cx + 10, cy - 5, isNavy ? '#0ea5e9' : '#38bdf8', true);
 
-        // 2. LAUNCHERS (SAM Batteries / TELs)
+        // LAUNCHERS
         samBatteries.forEach(bat => {
-            // Draw battery icon (triangle/box)
-            ctx.beginPath();
-            ctx.rect(bat.x - 5, bat.y - 5, 10, 10);
+            ctx.beginPath(); ctx.rect(bat.x - 5, bat.y - 5, 10, 10);
             ctx.fillStyle = 'rgba(74, 222, 128, 0.2)'; ctx.fill();
             ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 1; ctx.stroke();
-            // Show firing status if a missile was recently launched from here
             const isFiring = Date.now() - lastAutoFire.current < 300 && interceptors.some(i => i.source === bat.id);
             if (isFiring) {
-                ctx.beginPath(); ctx.arc(bat.x, bat.y, 12, 0, Math.PI*2);
-                ctx.strokeStyle = '#f97316'; ctx.stroke();
+                ctx.beginPath(); ctx.arc(bat.x, bat.y, 12, 0, Math.PI*2); ctx.strokeStyle = '#f97316'; ctx.stroke();
             }
             drawTacticalText(bat.id, bat.x - 25, bat.y + 15, '#94a3b8');
         });
 
-        // CONTACTS DRAWING 
+        // CONTACTS
         contacts.forEach(contact => {
           const distToCenter = Math.hypot(contact.x - cx, contact.y - cy);
           if (distToCenter > radarRadius) return;
 
           const isActive = contact.status === 'ACTIVE';
-          const isMarked = contact.id === priorityTargetId;
-          const isJamming = contact.isStealth && !isMarked && isActive; 
+          const isJamming = contact.isStealth && !contact.authorized && isActive; 
           
           let color = '#475569';
           if (isActive) {
@@ -375,7 +367,7 @@ export default function App() {
 
           if (isActive) {
             ctx.beginPath();
-            if (isMarked) {
+            if (contact.authorized) {
                 ctx.rotate(Date.now()/500);
                 ctx.moveTo(-15, 0); ctx.lineTo(15, 0); ctx.moveTo(0, -15); ctx.lineTo(0, 15);
                 ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
@@ -400,18 +392,24 @@ export default function App() {
             ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
             
             let displayName = isJamming ? 'ERR: JAMMING' : contact.id;
-            let displayHdg = isJamming ? '---' : Math.floor(contact.hdg) + '°';
-            let displaySpd = isJamming ? '---' : Math.floor(contact.speed * 200);
-
             drawTacticalText(`${displayName}`, contact.x + 45, contact.y - 25, isJamming ? '#ef4444' : color, true);
-            drawTacticalText(`HDG: ${displayHdg}`, contact.x + 45, contact.y - 13, '#94a3b8');
-            drawTacticalText(`SPD: ${displaySpd}`, contact.x + 45, contact.y - 3, '#94a3b8');
+            drawTacticalText(`HDG: ${isJamming ? '---' : Math.floor(contact.hdg) + '°'}`, contact.x + 45, contact.y - 13, '#94a3b8');
+            drawTacticalText(`SPD: ${isJamming ? '---' : Math.floor(contact.speed * 200)}`, contact.x + 45, contact.y - 3, '#94a3b8');
+            
+            // NEW RULES OF ENGAGEMENT UI WARNING
+            if (!isJamming) {
+                if (contact.authorized) {
+                    drawTacticalText(`[ENGAGE AUTH]`, contact.x + 45, contact.y + 10, '#ef4444', true); // Red Authorized tag
+                } else {
+                    drawTacticalText(`[WARN TX]`, contact.x + 45, contact.y + 10, '#facc15', true); // Yellow Warning Transmitted tag
+                }
+            }
           } else {
             drawTacticalText(`SPLASH [T-${Math.max(0, Math.floor((60 - contact.deathTimer)/30))}s]`, contact.x + 10, contact.y, '#475569');
           }
         });
 
-        // 3. MISSILES (Intercepting from TELs)
+        // MISSILES
         interceptors.forEach(inter => { 
             ctx.beginPath(); ctx.arc(inter.x, inter.y, 2, 0, Math.PI * 2); 
             ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.shadowBlur = 5; ctx.shadowColor = '#ffffff';
@@ -424,17 +422,18 @@ export default function App() {
 
         if (casualtyTimer.current > 0) {
             ctx.fillStyle = `rgba(220, 38, 38, ${Math.abs(Math.sin(Date.now() / 150)) * 0.4})`;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillRect(0, 0, logicalWidth, logicalHeight);
             ctx.fillStyle = '#ffffff';
             ctx.font = 'bold 24px "Courier New", monospace';
             ctx.textAlign = 'center';
             ctx.shadowBlur = 10; ctx.shadowColor = 'red';
-            ctx.fillText("CRITICAL ERROR: CIVILIAN CASUALTY DETECTED", canvas.width/2, canvas.height/2 - 20);
-            ctx.fillText("PROTOCOL BREACH", canvas.width/2, canvas.height/2 + 20);
-            ctx.textAlign = 'left';
-            ctx.shadowBlur = 0;
+            ctx.fillText("CRITICAL ERROR: CIVILIAN CASUALTY DETECTED", logicalWidth/2, logicalHeight/2 - 20);
+            ctx.fillText("PROTOCOL BREACH", logicalWidth/2, logicalHeight/2 + 20);
+            ctx.textAlign = 'left'; ctx.shadowBlur = 0;
             casualtyTimer.current--;
         }
+        
+        ctx.restore(); // END HIGH-DPI SCALING
       }
       animationFrameId = requestAnimationFrame(loop);
     };
@@ -461,14 +460,18 @@ export default function App() {
               {radarMode === 'AIR' ? '✈️ AIR RADAR' : '🌊 NAVAL SONAR'}
             </button>
             <button onClick={() => setIsAIActive(!isAIActive)} style={{ width: '100%', padding: '12px', marginBottom: '10px', backgroundColor: isAIActive ? '#7f1d1d' : '#1e293b', color: isAIActive ? '#fca5a5' : '#cbd5e1', border: '1px solid ' + (isAIActive ? '#ef4444' : '#475569'), borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
-              {isAIActive ? 'WEAPONS HOLD' : 'WEAPONS FREE (AUTO)'}
+              {isAIActive ? 'MASTER ARM: SAFE' : 'MASTER ARM: READY'}
             </button>
             <button onClick={() => handleReset(radarMode)} style={{ width: '100%', padding: '12px', backgroundColor: '#1e293b', color: '#cbd5e1', border: '1px solid #475569', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>CLEAR SCOPE</button>
           </div>
 
           <div style={{ backgroundColor: '#1e1b4b', border: '1px solid #6366f1', padding: '15px', borderRadius: '8px' }}>
-            <div style={{ color: '#818cf8', fontSize: '12px', fontWeight: 'bold', marginBottom: '8px' }}>C4ISR ADVISORY</div>
-            <div style={{ color: '#e0e7ff', fontSize: '13px', lineHeight: '1.5' }}>{advisorText}</div>
+            <div style={{ color: '#818cf8', fontSize: '12px', fontWeight: 'bold', marginBottom: '8px' }}>RULES OF ENGAGEMENT</div>
+            <div style={{ color: '#e0e7ff', fontSize: '12px', lineHeight: '1.5' }}>
+              Targets are issued [WARN TX]. 
+              Commander MUST click target to authorize [ENGAGE AUTH]. Auto-SAM will not fire unless authorized!
+            </div>
+            <div style={{ color: '#fca5a5', fontSize: '11px', marginTop: '10px', fontStyle: 'italic' }}>{advisorText}</div>
           </div>
           
           <div style={{ backgroundColor: 'rgba(34, 211, 238, 0.1)', border: '1px solid #0891b2', padding: '15px', borderRadius: '8px' }}>
@@ -477,7 +480,6 @@ export default function App() {
                 <span style={{color: '#facc15'}}>🟡 UNKNOWN:</span> Needs Verification<br/>
                 <span style={{color: '#ef4444'}}>🔴 HOSTILE:</span> Enemy Threat<br/>
                 <span style={{color: '#22d3ee'}}>🔵 CIVILIAN:</span> No Engage Zone<br/>
-                <span style={{color: '#a1a1aa'}}>✖️ JAMMING:</span> Stealth (Manual Lock)<br/>
                 <span style={{color: '#4ade80'}}>🟩 TEL:</span> SAM Battery Launcher
             </div>
           </div>
@@ -486,7 +488,8 @@ export default function App() {
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <div style={{ flex: 1, minHeight: '600px', position: 'relative', border: '3px solid #334155', borderRadius: '12px', backgroundColor: '#020617', boxShadow: '0 0 40px rgba(0, 0, 0, 0.9)', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06))', backgroundSize: '100% 4px, 3px 100%', pointerEvents: 'none', zIndex: 10 }}></div>
-            <canvas ref={canvasRef} width={1000} height={850} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', cursor: priorityTargetId ? 'crosshair' : 'crosshair' }} />
+            {/* RESOLUTION DOUBLED TO 2000x1700 TO FIX BLUR! */}
+            <canvas ref={canvasRef} width={2000} height={1700} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', cursor: 'crosshair' }} />
           </div>
         </div>
 
@@ -504,25 +507,18 @@ export default function App() {
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#fca5a5' }}>Contacts:</span> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{activeThreats.length}</span></div>
               
               <div style={{ backgroundColor: '#451a1a', padding: '12px', borderRadius: '6px', marginTop: '8px' }}>
-                <div style={{ color: '#fca5a5', fontSize: '11px', fontWeight: 'bold', marginBottom: '10px' }}>TARGET IFF TELEMETRY</div>
+                <div style={{ color: '#fca5a5', fontSize: '11px', fontWeight: 'bold', marginBottom: '10px' }}>TARGET STATUS</div>
                 {activeThreats.map(c => {
-                  const isMarked = c.id === priorityTargetId;
-                  const isJamming = c.isStealth && !isMarked;
-
+                  const isJamming = c.isStealth && !c.authorized;
                   let col = '#facc15';
                   if (isJamming) col = '#a1a1aa';
                   else if (c.displayIff === 'HOSTILE') col = '#ef4444';
                   else if (c.displayIff === 'CIVILIAN') col = '#22d3ee';
                   
-                  const displayName = isJamming ? 'ERR: SIGNAL LOST' : (c.displayIff === 'UNKNOWN' ? 'UNKNOWN BOGEY' : c.type);
-
                   return (
                     <div key={c.id} style={{ marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px dashed #7f1d1d' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: col, fontWeight: 'bold' }}>
-                        <span>{isJamming ? '???' : c.id}</span> <span>{isJamming ? 'JAMMING' : c.displayIff}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#fca5a5', marginTop: '5px' }}>
-                        <span>TYPE: {displayName}</span>
+                        <span>{isJamming ? '???' : c.id}</span> <span>{c.authorized ? 'ENGAGE AUTH' : 'WARN TX'}</span>
                       </div>
                     </div>
                   );
@@ -530,7 +526,7 @@ export default function App() {
                 {activeThreats.length === 0 && <div style={{color: '#94a3b8', fontSize: '10px', textAlign:'center'}}>NO ACTIVE CONTACTS</div>}
                 
                 <div style={{ color: '#ef4444', fontSize: '10px', marginTop: '10px', textAlign: 'center', borderTop: '1px dashed #7f1d1d', paddingTop: '5px' }}>
-                    Stealth bypasses Fire Control. Force lock!
+                    Click target on radar to AUTHORIZE FORCE.
                 </div>
               </div>
             </div>
