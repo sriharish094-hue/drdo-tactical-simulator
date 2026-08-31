@@ -78,7 +78,7 @@ export default function App() {
 
   // NETWORK CONNECTION & KILL FEED (UPDATED WITH LIVE RENDER URL)
   useEffect(() => {
-      // THE LIVE LINK IS UPDATED HERE!
+      // THIS IS THE UPDATED RENDER LINK!
       socketRef.current = io('https://drdo-tactical-simulator.onrender.com');
 
       socketRef.current.on('connect', () => {
